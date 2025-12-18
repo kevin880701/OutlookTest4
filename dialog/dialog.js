@@ -1,21 +1,23 @@
 /* global Office */
 
 Office.onReady(() => {
-    // 綁定按鈕
     document.getElementById("btnSend").onclick = () => sendMessageToParent("SEND_MAIL");
     document.getElementById("btnCancel").onclick = () => sendMessageToParent("CANCEL");
 
-    // 從 localStorage 讀取剛剛 commands.js 存好的資料
     try {
-        const dataJson = localStorage.getItem("emailCheckData");
-        if (dataJson) {
-            const data = JSON.parse(dataJson);
+        // 1. 【修改重點】從網址列 (URL) 抓取參數
+        const urlParams = new URLSearchParams(window.location.search);
+        const dataString = urlParams.get('data'); // 抓取 ?data= 後面的東西
+
+        if (dataString) {
+            // 2. 解碼並還原成物件
+            const data = JSON.parse(decodeURIComponent(dataString));
             renderData(data);
         } else {
-            document.getElementById("loading").innerText = "無法讀取郵件資料 (Storage Empty)";
+            document.getElementById("loading").innerText = "網址內沒有資料";
         }
     } catch (e) {
-        document.getElementById("loading").innerText = "發生錯誤: " + e.message;
+        document.getElementById("loading").innerText = "解析錯誤: " + e.message;
     }
 });
 
@@ -24,10 +26,10 @@ function sendMessageToParent(message) {
 }
 
 function renderData(data) {
-    // 1. 顯示主旨
+    // 顯示主旨
     document.getElementById("subject").innerText = data.subject || "(無主旨)";
 
-    // 2. 顯示收件人
+    // 顯示收件人
     const recipientContainer = document.getElementById("recipients");
     recipientContainer.innerHTML = "";
     
@@ -36,30 +38,18 @@ function renderData(data) {
             const div = document.createElement("div");
             div.style.marginBottom = "5px";
             const email = person.emailAddress;
-            const domain = email.split('@')[1] || "unknown";
             const name = person.displayName;
-            div.innerHTML = `<span class="domain-tag">${domain}</span> <b>${name}</b> <br/><small>&lt;${email}&gt;</small>`;
+            div.innerHTML = `<b>${name}</b> <br/><small>&lt;${email}&gt;</small>`;
             recipientContainer.appendChild(div);
         });
     } else {
         recipientContainer.innerText = "無收件人";
     }
 
-    // 3. 顯示附件
-    const attContainer = document.getElementById("attachments");
-    attContainer.innerHTML = "";
+    // 附件 (因為我們剛剛沒傳附件詳情，這裡先寫死或顯示數量)
+    document.getElementById("attachments").innerText = "附件檢查暫略";
 
-    if (data.attachments && data.attachments.length > 0) {
-        data.attachments.forEach(att => {
-            const div = document.createElement("div");
-            div.innerText = `📎 ${att.name}`;
-            attContainer.appendChild(div);
-        });
-    } else {
-        attContainer.innerText = "無附件";
-    }
-
-    // 隱藏 Loading，顯示內容
+    // 隱藏 Loading
     document.getElementById("loading").style.display = "none";
     document.getElementById("content").style.display = "block";
 }

@@ -6,10 +6,11 @@ Office.onReady();
 
 function validateSend(event) {
     sendEvent = event;
-    
-    // 1. 先讀取所有資料 (使用 Promise 包裝以確保讀完才開視窗)
+
+    // 1. 讀取資料
     const item = Office.context.mailbox.item;
     
+    // 使用 Promise 確保讀取完成
     const pSubject = new Promise((resolve) => {
         item.subject.getAsync((r) => resolve(r.status === 'succeeded' ? r.value : ''));
     });
@@ -18,54 +19,51 @@ function validateSend(event) {
         item.to.getAsync((r) => resolve(r.status === 'succeeded' ? r.value : []));
     });
 
-    const pCc = new Promise((resolve) => {
-        item.cc.getAsync((r) => resolve(r.status === 'succeeded' ? r.value : []));
-    });
+    // 為了簡化 URL 長度，我們先只測試「主旨」和「收件人」
+    // (如果資料太多，URL 會爆掉，那是進階課題)
+    Promise.all([pSubject, pTo])
+        .then((values) => {
+            const [subject, to] = values;
 
-    const pAttachments = new Promise((resolve) => {
-        item.attachments.getAsync((r) => resolve(r.status === 'succeeded' ? r.value : []));
-    });
+            // 2. 【修改重點】不存 storage，改打包成 JSON 字串
+            const dataPackage = {
+                subject: subject,
+                recipients: to, // 只傳收件人陣列
+                attachmentCount: 0 // 暫時省略附件細節
+            };
 
-    // 2. 等全部讀完
-    Promise.all([pSubject, pTo, pCc, pAttachments]).then((values) => {
-        const [subject, to, cc, attachments] = values;
+            // 3. 轉成字串並編碼 (因為要放在網址裡，不能有特殊符號)
+            const jsonString = encodeURIComponent(JSON.stringify(dataPackage));
 
-        // 3. 把資料打包，存入 localStorage (瀏覽器暫存)
-        const emailData = {
-            subject: subject,
-            recipients: [...to, ...cc], // 合併收件人與副本
-            attachments: attachments
-        };
-        
-        // 【關鍵】存入暫存，讓 dialog.js 讀取
-        localStorage.setItem("emailCheckData", JSON.stringify(emailData));
+            // 4. 把資料串在網址後面 (?data=...)
+            const baseUrl = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
+            const fullUrl = `${baseUrl}?data=${jsonString}`;
 
-        // 4. 資料準備好了，現在才打開視窗
-        openDialog();
-    });
-}
-
-function openDialog() {
-    const dialogUrl = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
-    
-    Office.context.ui.displayDialogAsync(
-        dialogUrl,
-        { height: 50, width: 30, displayInIframe: true },
-        dialogCallback
-    );
+            // 5. 打開視窗
+            Office.context.ui.displayDialogAsync(
+                fullUrl,
+                { height: 50, width: 30, displayInIframe: true },
+                dialogCallback
+            );
+        })
+        .catch((error) => {
+            // 【救命繩】如果上面發生任何錯誤，這裡會接住，並允許發信
+            // 這樣就不會發生「無限轉圈圈」的慘劇
+            console.error("發生錯誤:", error);
+            // 發生錯誤時，選擇放行或擋下 (這裡設為 true 放行以免卡住)
+            sendEvent.completed({ allowEvent: true });
+        });
 }
 
 function dialogCallback(asyncResult) {
     if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-        // 如果視窗開失敗，直接放行
+        // 開視窗失敗，放行
         sendEvent.completed({ allowEvent: true });
     } else {
         const dialog = asyncResult.value;
         dialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
             dialog.close();
-            // 清除暫存資料
-            localStorage.removeItem("emailCheckData");
-
+            // 接收視窗傳回來的指令
             if (arg.message === "SEND_MAIL") {
                 sendEvent.completed({ allowEvent: true });
             } else {
