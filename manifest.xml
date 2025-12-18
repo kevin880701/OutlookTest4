@@ -6,12 +6,14 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides"
   xsi:type="MailApp">
   
-  <Id>a4567890-bcde-1234-5678-90abcdef1234</Id> <Version>1.0.0.0</Version>
+  <Id>a4567890-bcde-1234-5678-90abcdef1236</Id>
+  <Version>1.0.0.0</Version>
   <ProviderName>Liu Haoran</ProviderName>
   <DefaultLocale>zh-TW</DefaultLocale>
   <DisplayName DefaultValue="郵件發送檢查器" />
   <Description DefaultValue="發送前確認收件人與附件" />
-  <IconUrl DefaultValue="https://ashy-smoke-03b7c5800.3.azurestaticapps.net/assets/icon-64.png" />
+  
+  <IconUrl DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-64.png" />
   
   <Hosts>
     <Host Name="Mailbox" />
@@ -26,7 +28,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net"/>
+        <SourceLocation DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/commands/commands.html"/>
       </DesktopSettings>
     </Form>
   </FormSettings>
@@ -55,7 +57,7 @@
     </Hosts>
     <Resources>
       <bt:Urls>
-        <bt:Url id="funcFile" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net" />
+        <bt:Url id="funcFile" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/commands/commands.html" />
       </bt:Urls>
     </Resources>
   </VersionOverrides>
