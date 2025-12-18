@@ -1,87 +1,81 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <OfficeApp
-          xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
-          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-          xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
-          xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides"
-          xsi:type="MailApp">
-
-  <Id>54911043-4217-4581-8077-8324483d3ea7</Id>
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides"
+  xsi:type="MailApp">
+  
+  <Id>a4567890-bcde-1234-5678-90abcdef1240</Id>
   <Version>1.0.0.0</Version>
-  <ProviderName>Azure Test</ProviderName>
+  <ProviderName>Liu Haoran</ProviderName>
   <DefaultLocale>zh-TW</DefaultLocale>
-  <DisplayName DefaultValue="Azure 測試增益集" />
-  <Description DefaultValue="測試連接 Azure Static Web Apps" />
+  <DisplayName DefaultValue="郵件發送檢查器" />
+  <Description DefaultValue="發送前確認收件人與附件" />
   
   <IconUrl DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-64.png" />
-  <HighResolutionIconUrl DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-64.png" />
-
-  <Permissions>ReadWriteItem</Permissions>
   
   <Hosts>
     <Host Name="Mailbox" />
   </Hosts>
+  
   <Requirements>
     <Sets>
       <Set Name="Mailbox" MinVersion="1.1" />
     </Sets>
   </Requirements>
-
+  
   <FormSettings>
-    <Form xsi:type="ItemRead">
+    <Form xsi:type="ItemEdit">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-64.png"/>
-        <RequestedHeight>250</RequestedHeight>
+        <SourceLocation DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/commands/commands.html"/>
       </DesktopSettings>
     </Form>
   </FormSettings>
+  
+  <Permissions>ReadWriteItem</Permissions>
+  
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit" />
+  </Rule>
+  
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
 
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    
+    <Requirements>
+       <bt:Sets DefaultMinVersion="1.3">
+          <bt:Set Name="Mailbox" />
+       </bt:Sets>
+    </Requirements>
     <Hosts>
-      <Host xsi:type="MailHost">
-        <DesktopFormFactor>
-          <FunctionFile resid="funcFile" />
-          <ExtensionPoint xsi:type="MessageReadCommandSurface">
-            <OfficeTab id="TabDefault">
-              <Group id="msgReadGroup">
-                <Label resid="groupLabel" />
-                <Control xsi:type="Button" id="msgReadOpenPaneButton">
-                  <Label resid="paneReadButtonLabel" />
-                  <Supertip>
-                    <Title resid="paneReadButtonLabel" />
-                    <Description resid="paneReadButtonDesc" />
-                  </Supertip>
-                  <Icon>
-                    <bt:Image size="16" resid="icon" />
-                    <bt:Image size="32" resid="icon" />
-                    <bt:Image size="80" resid="icon" />
-                  </Icon>
-                  <Action xsi:type="ShowTaskpane">
-                    <SourceLocation resid="taskPaneUrl" />
-                  </Action>
-                </Control>
-              </Group>
-            </OfficeTab>
-          </ExtensionPoint>
-        </DesktopFormFactor>
-      </Host>
+       <Host xsi:type="MailHost" />
     </Hosts>
 
-    <Resources>
-      <bt:Images>
-        <bt:Image id="icon" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-64.png" />
-      </bt:Images>
-      <bt:Urls>
-        <bt:Url id="funcFile" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-64.png" />
-        <bt:Url id="taskPaneUrl" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-64.png" />
-      </bt:Urls>
-      <bt:ShortStrings>
-        <bt:String id="groupLabel" DefaultValue="Azure測試" />
-        <bt:String id="paneReadButtonLabel" DefaultValue="開啟圖片" />
-      </bt:ShortStrings>
-      <bt:LongStrings>
-        <bt:String id="paneReadButtonDesc" DefaultValue="測試讀取 Azure Static Web App" />
-      </bt:LongStrings>
-    </Resources>
+    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+      <Requirements>
+        <bt:Sets DefaultMinVersion="1.3">
+          <bt:Set Name="Mailbox" />
+        </bt:Sets>
+      </Requirements>
+
+      <Hosts>
+        <Host xsi:type="MailHost">
+          <DesktopFormFactor>
+            <FunctionFile resid="funcFile" />
+            <ExtensionPoint xsi:type="Events">
+              <Event Type="ItemSend" FunctionExecution="synchronous" FunctionName="validateSend" />
+            </ExtensionPoint>
+          </DesktopFormFactor>
+        </Host>
+      </Hosts>
+      
+      <Resources>
+        <bt:Urls>
+          <bt:Url id="funcFile" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/commands/commands.html" />
+        </bt:Urls>
+      </Resources>
+    </VersionOverrides>
+
   </VersionOverrides>
 </OfficeApp>

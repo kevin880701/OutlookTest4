@@ -9,10 +9,11 @@ function validateSend(event) {
     sendEvent = event; // 把事件存起來，稍後決定要不要放行
 
     // 打開彈跳視窗
-    // 注意：displayInIframe: true 是為了在 Web 版 Outlook 獲得更好的支援
+    const dialogUrl = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
+
     Office.context.ui.displayDialogAsync(
-        'https://ashy-smoke-03b7c5800.3.azurestaticapps.net/dialog/dialog.html',
-        { height: 60, width: 40, displayInIframe: true },
+        dialogUrl,
+        { height: 50, width: 30, displayInIframe: true },
         dialogCallback
     );
 }
