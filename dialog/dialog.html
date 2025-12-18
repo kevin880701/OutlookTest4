@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>發送確認</title>
+    <link rel="stylesheet" href="https://static2.sharepointonline.com/files/fabric/office-ui-fabric-core/11.0.0/css/fabric.min.css"/>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" type="text/javascript"></script>
+    <style>
+        body { padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .section { margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .label { font-weight: bold; color: #333; }
+        .value { color: #666; word-break: break-all; }
+        .domain-tag { background-color: #e1dfdd; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; margin-right: 5px; }
+        .btn-container { display: flex; justify-content: space-between; margin-top: 20px; }
+        button { padding: 10px 20px; cursor: pointer; border: none; border-radius: 4px; font-size: 14px; }
+        .btn-send { background-color: #0078d4; color: white; }
+        .btn-cancel { background-color: #f3f2f1; color: #333; }
+        #loading { display: block; }
+        #content { display: none; }
+    </style>
+</head>
+<body class="ms-Fabric">
+
+    <div id="loading">讀取郵件資訊中...</div>
+
+    <div id="content">
+        <div class="section">
+            <div class="label">主旨：</div>
+            <div class="value" id="subject"></div>
+        </div>
+
+        <div class="section">
+            <div class="label">收件人 (網域檢查)：</div>
+            <div class="value" id="recipients"></div>
+        </div>
+
+        <div class="section">
+            <div class="label">附件清單：</div>
+            <div class="value" id="attachments">無附件</div>
+        </div>
+
+        <div class="btn-container">
+            <button class="btn-cancel" id="btnCancel">取消返回</button>
+            <button class="btn-send" id="btnSend">確認寄送</button>
+        </div>
+    </div>
+
+    <script src="dialog.js"></script>
+</body>
+</html>
