@@ -26,7 +26,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://ashy-smoke-03b7c5800.3.azurestaticapps.net/commands/commands.html"/>
+        <SourceLocation DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net"/>
       </DesktopSettings>
     </Form>
   </FormSettings>
@@ -55,7 +55,7 @@
     </Hosts>
     <Resources>
       <bt:Urls>
-        <bt:Url id="funcFile" DefaultValue="https://ashy-smoke-03b7c5800.3.azurestaticapps.net/commands/commands.html" />
+        <bt:Url id="funcFile" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net" />
       </bt:Urls>
     </Resources>
   </VersionOverrides>
