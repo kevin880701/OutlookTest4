@@ -1,74 +1,37 @@
 /* global Office */
 
-let sendEvent;
+Office.onReady(() => {
+    // ★★★ 關鍵修正：告訴 Outlook，XML 裡的 "openDialog" 對應到這裡的 openDialog 函數
+    Office.actions.associate("openDialog", openDialog);
+});
 
-Office.onReady();
+function openDialog(event) {
+    // 定義要打開的彈窗網址 (請確認這個檔案存在)
+    // 這裡我改回 helloworld.html 作為測試，確認單純彈窗沒問題
+    const fullUrl = 'https://icy-moss-034796200.2.azurestaticapps.net/helloworld.html';
 
-function validateSend(event) {
-    sendEvent = event;
-
-    // 1. 讀取資料
-    const item = Office.context.mailbox.item;
-    
-    // 使用 Promise 確保讀取完成
-    const pSubject = new Promise((resolve) => {
-        item.subject.getAsync((r) => resolve(r.status === 'succeeded' ? r.value : ''));
-    });
-
-    const pTo = new Promise((resolve) => {
-        item.to.getAsync((r) => resolve(r.status === 'succeeded' ? r.value : []));
-    });
-
-    // 為了簡化 URL 長度，我們先只測試「主旨」和「收件人」
-    // (如果資料太多，URL 會爆掉，那是進階課題)
-    Promise.all([pSubject, pTo])
-        .then((values) => {
-            const [subject, to] = values;
-
-            // 2. 【修改重點】不存 storage，改打包成 JSON 字串
-            const dataPackage = {
-                subject: subject,
-                recipients: to, // 只傳收件人陣列
-                attachmentCount: 0 // 暫時省略附件細節
-            };
-
-            // 3. 轉成字串並編碼 (因為要放在網址裡，不能有特殊符號)
-            const jsonString = encodeURIComponent(JSON.stringify(dataPackage));
-
-            // 4. 把資料串在網址後面 (?data=...)
-            const baseUrl = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
-            const fullUrl = `${baseUrl}?data=${jsonString}`;
-
-            // 5. 打開視窗
-            Office.context.ui.displayDialogAsync(
-                fullUrl,
-                { height: 50, width: 30, displayInIframe: true },
-                dialogCallback
-            );
-        })
-        .catch((error) => {
-            // 【救命繩】如果上面發生任何錯誤，這裡會接住，並允許發信
-            // 這樣就不會發生「無限轉圈圈」的慘劇
-            console.error("發生錯誤:", error);
-            // 發生錯誤時，選擇放行或擋下 (這裡設為 true 放行以免卡住)
-            sendEvent.completed({ allowEvent: true });
-        });
-}
-
-function dialogCallback(asyncResult) {
-    if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-        // 開視窗失敗，放行
-        sendEvent.completed({ allowEvent: true });
-    } else {
-        const dialog = asyncResult.value;
-        dialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
-            dialog.close();
-            // 接收視窗傳回來的指令
-            if (arg.message === "SEND_MAIL") {
-                sendEvent.completed({ allowEvent: true });
+    // 打開視窗
+    Office.context.ui.displayDialogAsync(
+        fullUrl,
+        { 
+            height: 50, 
+            width: 30, 
+            displayInIframe: true // Mac 版建議設為 true，顯示效果較好
+        },
+        function (asyncResult) {
+            if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+                console.error("彈窗失敗: " + asyncResult.error.message);
             } else {
-                sendEvent.completed({ allowEvent: false });
+                // 視窗開啟成功
+                const dialog = asyncResult.value;
+                
+                // 這裡可以加入接收訊息的監聽器 (稍後再加)
+                // dialog.addEventHandler(...) 
             }
-        });
-    }
+        }
+    );
+
+    // ★★★ 關鍵修正：按鈕點擊事件不需要回傳 { allowEvent: true }
+    // 那是給「傳送檢查」用的。普通按鈕只要告訴 Outlook "我做完了" 即可。
+    event.completed();
 }
