@@ -1,14 +1,12 @@
 /* global Office */
 
-// ★ 重點 1：把變數宣告在最外面，變成「全域變數」
-// 這樣函數執行結束後，它才不會被當作垃圾回收
-let dialog; 
-
 Office.onReady(() => {
+    // 註冊函數
     Office.actions.associate("openDialog", openDialog);
 });
 
 function openDialog(event) {
+    // 確保這裡的 URL 是正確的
     const fullUrl = 'https://icy-moss-034796200.2.azurestaticapps.net/helloworld.html';
 
     Office.context.ui.displayDialogAsync(
@@ -16,24 +14,28 @@ function openDialog(event) {
         { 
             height: 50, 
             width: 30, 
-            // ★ 建議：若還是閃退，將這裡改為 false 試試 (改成獨立視窗通常比較穩定)
+            // ★ 修正 1：Mac 上務必設為 false，讓它變成獨立視窗
             displayInIframe: false 
         },
         function (asyncResult) {
             if (asyncResult.status === Office.AsyncResultStatus.Failed) {
                 console.error("彈窗失敗: " + asyncResult.error.message);
-                event.completed();
+                event.completed(); // 失敗的話就直接結束
             } else {
-                // ★ 重點 2：把開啟的視窗物件存入全域變數
-                dialog = asyncResult.value;
+                // 視窗成功開啟指令已送出...
+                const dialog = asyncResult.value;
                 
-                // 為了除錯，我們可以加一個事件監聽，確保視窗活著
-                dialog.addEventHandler(Office.EventType.DialogEventReceived, function(arg) {
-                    console.log("視窗事件:", arg);
-                });
+                // 可以在這裡加監聽器 (可選)
+                 dialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
+                     dialog.close();
+                 });
 
-                // ★ 重點 3：成功開啟後，再告訴 Outlook 結束轉圈圈
-                event.completed();
+                // ★ 修正 2：不要立刻自殺！使用 setTimeout 拖延 5 秒
+                // 這給了彈窗足夠的時間完成載入並脫離父程序
+                setTimeout(() => {
+                    console.log("背景程式任務完成，正在結束...");
+                    event.completed();
+                }, 5000); // 延遲 5000 毫秒 (5秒)
             }
         }
     );
