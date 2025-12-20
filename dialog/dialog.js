@@ -1,7 +1,5 @@
 /* global Office, document */
 
-let pollInterval;
-
 function log(msg) {
     const consoleDiv = document.getElementById("debug-console");
     if (consoleDiv) {
@@ -12,21 +10,18 @@ function log(msg) {
 }
 
 Office.onReady(() => {
-    log("UI Ready. Polling data...");
-    
-    // 每 1 秒檢查一次資料
-    pollInterval = setInterval(checkBridgeData, 1000);
-    checkBridgeData();
+    log("UI Ready. Waiting for Broadcast...");
+
+    // 1. 註冊接收器
+    Office.context.ui.addHandlerAsync(
+        Office.EventType.DialogParentMessageReceived,
+        onParentMessageReceived
+    );
 
     document.getElementById("btnSend").onclick = () => {
-        log("Saving verified...");
-        Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
-            const props = result.value;
-            props.set("isVerified", true);
-            props.saveAsync(() => {
-                Office.context.ui.messageParent("VERIFIED_PASS");
-            });
-        });
+        log("Sending VERIFIED_PASS...");
+        // 這裡不能寫入屬性(會崩潰)，直接通知 Parent 去寫
+        Office.context.ui.messageParent("VERIFIED_PASS");
     };
     
     document.getElementById("btnCancel").onclick = () => {
@@ -34,47 +29,77 @@ Office.onReady(() => {
     };
 });
 
-function checkBridgeData() {
-    Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
-        if (result.status === Office.AsyncResultStatus.Failed) return;
+// 當收到 Parent 廣播來的資料時
+function onParentMessageReceived(arg) {
+    try {
+        const message = arg.message;
+        const data = JSON.parse(message); 
         
-        const props = result.value;
-        const dataString = props.get("bridge_data");
-        
-        if (dataString) {
-            log("✅ Data found!");
-            clearInterval(pollInterval); // 停止輪詢
-            try {
-                renderData(JSON.parse(dataString));
-            } catch (e) {
-                log("Parse Error: " + e.message);
-            }
-        } else {
-            log("⏳ Waiting...");
+        if (data && data.recipients) {
+             log("✅ Data Received! Rendering...");
+             renderData(data);
+             
+             // 告訴 Parent 別再廣播了
+             Office.context.ui.messageParent("DATA_RECEIVED");
         }
-    });
+    } catch (e) {
+        log("Error: " + e.message);
+    }
 }
 
-// ... (renderData 函式維持您原本的樣子即可)
-// 為了完整性，這裡需要包含 renderData 和 checkAllChecked
 function renderData(data) {
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
-    if (data.recipients) {
+    
+    if (data.recipients && data.recipients.length > 0) {
         data.recipients.forEach((p, i) => {
-            // 簡單渲染邏輯...
             const d = document.createElement("div");
-            d.innerHTML = `<input type='checkbox' checked class='verify-check'> ${p.displayName || p.emailAddress}`;
+            d.className = "item-row";
+            d.innerHTML = `
+                <input type='checkbox' checked class='verify-check' id='r_${i}' onchange='checkAllChecked()'>
+                <label for='r_${i}'>${p.displayName || p.emailAddress}</label>
+            `;
             container.appendChild(d);
         });
     } else {
         container.innerHTML = "無收件人";
     }
+    
+    // 附件
+    const attContainer = document.getElementById("attachments-list");
+    attContainer.innerHTML = "";
+    if (data.attachments && data.attachments.length > 0) {
+        data.attachments.forEach((a, i) => {
+            const d = document.createElement("div");
+            d.className = "item-row";
+            d.innerHTML = `
+                <input type='checkbox' checked class='verify-check' id='a_${i}' onchange='checkAllChecked()'>
+                <label for='a_${i}'>📎 ${a.name}</label>
+            `;
+            attContainer.appendChild(d);
+        });
+    } else {
+        attContainer.innerText = "無附件";
+    }
+
     checkAllChecked();
 }
 
-function checkAllChecked() {
-    document.getElementById("btnSend").disabled = false;
-    document.getElementById("btnSend").style.opacity = "1";
-    document.getElementById("btnSend").style.cursor = "pointer";
-}
+// 將 checkAllChecked 綁定到 window 以便 HTML 字串中的 onchange 可以呼叫
+window.checkAllChecked = function() {
+    const all = document.querySelectorAll(".verify-check");
+    let pass = true;
+    all.forEach(c => { if(!c.checked) pass = false; });
+    
+    const btn = document.getElementById("btnSend");
+    if (all.length === 0) pass = true;
+    
+    btn.disabled = !pass;
+    if (pass) {
+        btn.style.opacity = "1";
+        btn.style.cursor = "pointer";
+    } else {
+        btn.style.opacity = "0.5";
+        btn.style.cursor = "not-allowed";
+    }
+};
