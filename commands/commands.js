@@ -2,7 +2,7 @@
 
 let dialog;
 let currentEvent;
-let cachedPayload = null; // 用來暫存抓到的資料
+let cachedPayload = null; 
 
 Office.onReady(() => {
   // Init
@@ -24,7 +24,7 @@ function validateSend(event) {
 
 function openDialog(event) {
     currentEvent = event;
-    cachedPayload = null; // 重置資料
+    cachedPayload = null; 
 
     // A. 60秒安全機制
     setTimeout(() => {
@@ -37,7 +37,7 @@ function openDialog(event) {
         }
     }, 60000);
 
-    // B. 馬上開始抓資料 (存入 cachedPayload)
+    // B. 馬上開始抓資料
     fetchData();
 
     // C. 開啟視窗
@@ -69,7 +69,8 @@ function fetchData() {
     Promise.all([
         new Promise(r => item.to.getAsync(x => r(x.value || []))),
         new Promise(r => item.cc.getAsync(x => r(x.value || []))),
-        new Promise(r => item.attachments.getAsync(x => r(x.value || [])))
+        // 【修正點】Compose 模式下，讀取附件要用 getAttachmentsAsync
+        new Promise(r => item.getAttachmentsAsync(x => r(x.value || [])))
     ]).then(([to, cc, attachments]) => {
         // 資料抓好了，存起來
         cachedPayload = {
