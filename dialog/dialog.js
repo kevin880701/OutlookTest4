@@ -35,12 +35,8 @@ function onParentMessageReceived(arg) {
     }
 }
 
-// 渲染函式 (維持原樣)
+// 渲染函式 (您的原始邏輯，幫您保留)
 function renderData(data) {
-    // ... 這裡完全不用動，跟您原本的程式碼一樣 ...
-    // (為了節省篇幅，請保留您原本的 renderData 和 checkAllChecked 函式)
-    
-    // 記得補上這段代碼以免您複製貼上時漏掉
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
     const userDomain = "outlook.com"; 
@@ -78,6 +74,7 @@ function renderData(data) {
         container.innerHTML = "無收件人";
     }
     
+    // 附件渲染 (保留您的邏輯)
     const attContainer = document.getElementById("attachments-list");
     attContainer.innerHTML = "";
     if (data.attachments && data.attachments.length > 0) {

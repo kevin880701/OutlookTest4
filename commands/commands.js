@@ -7,7 +7,7 @@ Office.onReady(() => {
   // Init
 });
 
-// 1. 攔截器 (維持不變)
+// 1. 攔截器 (LaunchEvent) - 這部分維持不變
 function validateSend(event) {
     Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
         const props = result.value;
@@ -25,84 +25,73 @@ function validateSend(event) {
     });
 }
 
-// 2. 開啟視窗 (改用 Promise 與 訊息傳遞)
-async function openDialog(event) {
-    try {
-        // A. 先開啟視窗 (讓使用者立刻看到反應)
-        const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog.html';
-        
-        // 使用 Promise 包裝 displayDialogAsync
-        await new Promise((resolve, reject) => {
-            Office.context.ui.displayDialogAsync(
-                url, 
-                { height: 60, width: 50, displayInIframe: true },
-                (asyncResult) => {
-                    if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-                        reject(new Error(asyncResult.error.message));
-                    } else {
-                        dialog = asyncResult.value;
-                        // 監聽 Dialog 傳來的訊息 ("READY", "VERIFIED_PASS"...)
-                        dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
-                        resolve();
-                    }
-                }
-            );
-        });
+// 2. 開啟視窗 (大幅修改：先開視窗，再抓資料)
+function openDialog(event) {
+    // A. 立刻開啟視窗，避免被 Mac 攔截
+    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog.html';
 
-        // B. 視窗開好後，開始抓資料 (平行處理加速)
-        const item = Office.context.mailbox.item;
-        const [resTo, resCc, resAtt] = await Promise.all([
-            getAsyncPromise(item.to),
-            getAsyncPromise(item.cc),
-            getAsyncPromise(item.attachments)
-        ]);
+    Office.context.ui.displayDialogAsync(
+        url, 
+        { height: 60, width: 50, displayInIframe: true },
+        (asyncResult) => {
+            if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+                console.error("Dialog Failed:", asyncResult.error.message);
+            } else {
+                dialog = asyncResult.value;
+                // 監聽 Dialog 傳來的 "DIALOG_READY" 或 "VERIFIED_PASS"
+                dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
+            }
 
-        // C. 整理資料包
+            // B. 視窗指令已送出，立刻停止 Ribbon 轉圈圈
+            // 視窗會繼續開啟，背景會繼續抓資料
+            if (event) event.completed();
+        }
+    );
+
+    // C. 視窗開啟的同時，背景開始抓資料
+    const item = Office.context.mailbox.item;
+    
+    // 使用 Promise.all 平行讀取，加速資料準備
+    const pTo = new Promise(resolve => item.to.getAsync(r => resolve(r.value || [])));
+    const pCc = new Promise(resolve => item.cc.getAsync(r => resolve(r.value || [])));
+    const pAtt = new Promise(resolve => item.attachments.getAsync(r => resolve(r.value || [])));
+
+    Promise.all([pTo, pCc, pAtt]).then(([to, cc, attachments]) => {
+        // 資料準備好了，存起來等待 Dialog 來要
         fetchedData = {
-            subject: item.subject, 
+            subject: item.subject, // Subject 通常是同步的，若讀不到可改用 getAsync
             recipients: [
-                ...(resTo.value ? resTo.value.map(r => ({...r, type: 'To'})) : []),
-                ...(resCc.value ? resCc.value.map(r => ({...r, type: 'Cc'})) : [])
+                ...to.map(r => ({...r, type: 'To'})),
+                ...cc.map(r => ({...r, type: 'Cc'}))
             ],
-            attachments: resAtt.value || []
+            attachments: attachments
         };
-
-        // 注意：這裡我們不 call event.completed()，我們要等 Dialog 說它 Ready 之後傳資料給它
-        // 但為了避免 Dialog 載入失敗導致卡死，可以設個簡單的 Timeout 保險 (非必要)
-
-    } catch (error) {
-        console.error("OpenDialog Error:", error);
-        // 如果出錯，至少要讓轉圈圈停下來
-        if (event) event.completed();
-    }
-}
-
-// 輔助：把 getAsync 轉成 Promise
-function getAsyncPromise(itemProperty) {
-    return new Promise((resolve) => {
-        itemProperty.getAsync((result) => {
-            resolve(result); // 即使失敗也 resolve，由邏輯判斷 status
-        });
+        
+        // 如果 Dialog 已經開好並發送過 READY 訊號 (極少見，通常是 Dialog 比較慢)，可以這裡補發
+        // 但主要邏輯還是交給 processMessage 處理
+        console.log("Data fetched ready.");
     });
 }
 
-// 3. 處理訊息 (核心邏輯修改)
+// 3. 處理訊息 (核心溝通邏輯)
 function processMessage(arg) {
-    const message = arg.message; // 可能是字串或 JSON 字串
+    const message = arg.message;
 
-    // A. Dialog 載入完成，請求資料
+    // A. 視窗載入完畢，請求資料
     if (message === "DIALOG_READY") {
         if (dialog && fetchedData) {
-            // 把資料推給 Dialog
+            // 把資料「推」給視窗 (這是 Mac 上唯一可靠的傳輸方式)
             const jsonString = JSON.stringify(fetchedData);
             dialog.messageChild(jsonString);
-            
-            // 資料送出去了，任務完成！現在可以停止 Ribbon 的轉圈圈了
-            // 注意：這裡假設 openDialog 的 event 全域變數可能存取不到，
-            // 但在 FunctionFile 模式下，我們通常無法在此處 access 'event'。
-            // 修正策略：在 openDialog 結束時就 call completed，讓 dialog 獨立運作。
-            // 但如果 openDialog 結束太快，Dialog 可能還沒由收到 messageChild。
-            // 最保險的做法：資料抓完就可以 completed 了。
+        } else {
+            // 萬一資料還沒抓完，設個簡單的輪詢等待 (或是直接再推一次)
+            // 簡單解法：每 500ms 檢查一次 fetchedData
+            const checkData = setInterval(() => {
+                if (fetchedData) {
+                    dialog.messageChild(JSON.stringify(fetchedData));
+                    clearInterval(checkData);
+                }
+            }, 500);
         }
         return;
     }
@@ -121,54 +110,7 @@ function processMessage(arg) {
     }
 }
 
-// 修正後的 openDialog 結尾邏輯：
-// 為了避免複雜的 event 傳遞，我們改採「抓完資料就結束轉圈，然後等 Dialog Ready 再送資料」
-// 覆寫上面的 openDialog 後半段：
-
-async function openDialog_Optimized(event) {
-    try {
-        const item = Office.context.mailbox.item;
-        
-        // 1. 平行抓資料
-        const [resTo, resCc, resAtt] = await Promise.all([
-            getAsyncPromise(item.to),
-            getAsyncPromise(item.cc),
-            getAsyncPromise(item.attachments)
-        ]);
-
-        fetchedData = {
-            subject: item.subject, 
-            recipients: [
-                ...(resTo.value ? resTo.value.map(r => ({...r, type: 'To'})) : []),
-                ...(resCc.value ? resCc.value.map(r => ({...r, type: 'Cc'})) : [])
-            ],
-            attachments: resAtt.value || []
-        };
-
-        // 2. 開視窗
-        const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog.html';
-        Office.context.ui.displayDialogAsync(
-            url, 
-            { height: 60, width: 50, displayInIframe: true },
-            (asyncResult) => {
-                if (asyncResult.status === Office.AsyncResultStatus.Succeeded) {
-                    dialog = asyncResult.value;
-                    dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
-                }
-                
-                // 3. 關鍵：無論成功與否，立刻停止轉圈圈！
-                // 視窗已經開了，資料也存好了，剩下的讓 Dialog 和 processMessage 去溝通
-                if (event) event.completed();
-            }
-        );
-
-    } catch (e) {
-        console.error(e);
-        if (event) event.completed();
-    }
-}
-
 // 綁定
 if (typeof g === 'undefined') var g = window;
 g.validateSend = validateSend;
-g.openDialog = openDialog_Optimized; // 使用優化版
+g.openDialog = openDialog;
