@@ -1,13 +1,7 @@
 /* global Office, document */
 
 Office.onReady(() => {
-    // 1. 註冊接收器：準備接收來自 Parent 的廣播
-    Office.context.ui.addHandlerAsync(
-        Office.EventType.DialogParentMessageReceived,
-        onParentMessageReceived
-    );
-
-    // 按鈕綁定
+    // 1. 初始化按鈕
     document.getElementById("btnSend").onclick = () => {
         if (!document.getElementById("btnSend").disabled) {
             Office.context.ui.messageParent("VERIFIED_PASS");
@@ -16,36 +10,31 @@ Office.onReady(() => {
     document.getElementById("btnCancel").onclick = () => {
         Office.context.ui.messageParent("CANCEL");
     };
-});
 
-// 當收到 Parent 廣播來的資料時
-function onParentMessageReceived(arg) {
+    // 2. 【關鍵】直接從 URL 讀取資料
     try {
-        const message = arg.message;
-        const data = JSON.parse(message); // 解析資料
-        
-        // 確保資料有效
-        if (data && data.recipients) {
-             renderData(data); // 渲染畫面
-             
-             // 禮貌性地回覆一聲：我收到了，別再廣播了
-             // (如果 messageParent 失敗也沒關係，Parent 8秒後會自動停)
-             Office.context.ui.messageParent("DATA_RECEIVED");
+        const urlParams = new URLSearchParams(window.location.search);
+        const dataString = urlParams.get('data');
+
+        if (dataString) {
+            const data = JSON.parse(decodeURIComponent(dataString));
+            renderData(data); // 有資料就一定會畫出來
+        } else {
+            document.getElementById("recipients-list").innerText = "錯誤：網址中沒有資料";
         }
     } catch (e) {
-        console.error("解析錯誤", e);
+        console.error(e);
+        document.getElementById("recipients-list").innerText = "資料解析失敗 (可能資料量過大)";
     }
-}
+});
 
-// 渲染函式 (維持不變)
+// 渲染函式 (維持不變，請直接使用)
 function renderData(data) {
-    document.getElementById("subject").innerText = data.subject || "(無主旨)";
-    
-    // ... 收件人渲染 ...
-    const recipientContainer = document.getElementById("recipients-list");
-    recipientContainer.innerHTML = "";
+    const container = document.getElementById("recipients-list");
+    container.innerHTML = "";
     const userDomain = "outlook.com"; 
 
+    // 收件人
     if (data.recipients && data.recipients.length > 0) {
         data.recipients.forEach((person, index) => {
             const row = document.createElement("div");
@@ -73,13 +62,13 @@ function renderData(data) {
             label.innerHTML = html;
             row.appendChild(checkbox);
             row.appendChild(label);
-            recipientContainer.appendChild(row);
+            container.appendChild(row);
         });
     } else {
-        recipientContainer.innerHTML = "無收件人";
+        container.innerHTML = "無收件人";
     }
-
-    // ... 附件渲染 ...
+    
+    // 附件
     const attContainer = document.getElementById("attachments-list");
     attContainer.innerHTML = "";
     if (data.attachments && data.attachments.length > 0) {
