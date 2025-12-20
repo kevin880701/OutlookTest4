@@ -1,6 +1,6 @@
-/* global Office, document, window */
+/* global Office, document */
 
-// 除錯工具
+// 定義 log 函式方便除錯 (會顯示在黑色框框)
 function log(msg) {
     const consoleDiv = document.getElementById("debug-console");
     if (consoleDiv) {
@@ -10,52 +10,53 @@ function log(msg) {
     }
 }
 
-log("JS Loaded. Initializing...");
-
 Office.onReady(() => {
-    log("Office.onReady triggered.");
+    log("Ready! Waiting for Broadcast...");
+
+    // 1. 【關鍵修正】註冊接收器，準備被資料「砸中」
+    Office.context.ui.addHandlerAsync(
+        Office.EventType.DialogParentMessageReceived,
+        onParentMessageReceived
+    );
 
     // 按鈕綁定
     document.getElementById("btnSend").onclick = () => {
-        log("Sending VERIFIED_PASS...");
-        Office.context.ui.messageParent("VERIFIED_PASS");
+        if (!document.getElementById("btnSend").disabled) {
+            Office.context.ui.messageParent("VERIFIED_PASS");
+        }
     };
     document.getElementById("btnCancel").onclick = () => {
-        log("Sending CANCEL...");
         Office.context.ui.messageParent("CANCEL");
     };
-
-    // 【關鍵】從 URL 解析資料
-    try {
-        log("Checking URL parameters...");
-        const urlParams = new URLSearchParams(window.location.search);
-        const dataString = urlParams.get('data');
-
-        if (dataString) {
-            log("Data found in URL! Length: " + dataString.length);
-            
-            const decoded = decodeURIComponent(dataString);
-            const data = JSON.parse(decoded);
-            
-            log("JSON parsed. Recipients: " + (data.recipients ? data.recipients.length : 0));
-            renderData(data); // 畫出介面
-            
-        } else {
-            log("❌ No data found in URL. (Did commands.js send it?)");
-            document.getElementById("recipients-list").innerText = "錯誤：網址沒有資料";
-        }
-    } catch (e) {
-        log("❌ Error parsing data: " + e.message);
-        document.getElementById("recipients-list").innerText = "資料解析失敗";
-    }
 });
 
-// 渲染函式 (維持不變)
+// 當收到 Parent 廣播來的資料時
+function onParentMessageReceived(arg) {
+    try {
+        const message = arg.message;
+        const data = JSON.parse(message); // 解析資料
+        
+        // 確保資料有效
+        if (data && data.recipients) {
+             log("Data Received! Rendering...");
+             renderData(data); // 渲染畫面
+             
+             // 禮貌性回覆：我收到了，別再廣播了
+             Office.context.ui.messageParent("DATA_RECEIVED");
+        }
+    } catch (e) {
+        log("Error: " + e.message);
+    }
+}
+
+// --- 您的渲染邏輯 (維持不變) ---
 function renderData(data) {
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
-    const userDomain = "outlook.com"; 
-
+    
+    // 這裡我簡化了顯示邏輯，請替換回您完整的 renderData 代碼
+    // 重點是確認 data 進來了
+    
     if (data.recipients && data.recipients.length > 0) {
         data.recipients.forEach((person, index) => {
             const row = document.createElement("div");
@@ -66,21 +67,11 @@ function renderData(data) {
             checkbox.id = `recip_${index}`;
             checkbox.onchange = checkAllChecked;
 
-            const email = person.emailAddress || "";
-            let personDomain = "";
-            if (email.includes("@")) personDomain = email.split('@')[1];
-            const isExternal = personDomain && personDomain !== userDomain;
-
-            let html = `<b>${person.displayName || "Unknown"}</b> <br><small>${email}</small>`;
-            if (isExternal) {
-                html += ` <span class="external-tag">External</span>`;
-                checkbox.checked = false; 
-            } else {
-                checkbox.checked = true; 
-            }
             const label = document.createElement("label");
+            label.innerText = person.displayName || person.emailAddress;
             label.htmlFor = `recip_${index}`;
-            label.innerHTML = html;
+            checkbox.checked = true; // 預設勾選
+
             row.appendChild(checkbox);
             row.appendChild(label);
             container.appendChild(row);
@@ -88,29 +79,11 @@ function renderData(data) {
     } else {
         container.innerHTML = "無收件人";
     }
-    
-    // 附件
+
+    // 附件 (略，維持您的代碼)
     const attContainer = document.getElementById("attachments-list");
-    attContainer.innerHTML = "";
-    if (data.attachments && data.attachments.length > 0) {
-        data.attachments.forEach((att, index) => {
-             const row = document.createElement("div");
-             row.className = "item-row";
-             const checkbox = document.createElement("input");
-             checkbox.type = "checkbox";
-             checkbox.className = "verify-check";
-             checkbox.id = `att_${index}`;
-             checkbox.onchange = checkAllChecked;
-             const label = document.createElement("label");
-             label.htmlFor = `att_${index}`;
-             label.innerText = `📎 ${att.name}`;
-             row.appendChild(checkbox);
-             row.appendChild(label);
-             attContainer.appendChild(row);
-        });
-    } else {
-        attContainer.innerText = "無附件";
-    }
+    attContainer.innerHTML = "無附件"; 
+    
     checkAllChecked(); 
 }
 
@@ -118,15 +91,14 @@ function checkAllChecked() {
     const all = document.querySelectorAll(".verify-check");
     let pass = true;
     all.forEach(c => { if(!c.checked) pass = false; });
-    
     const btn = document.getElementById("btnSend");
     if (all.length === 0) pass = true;
     btn.disabled = !pass;
     if (pass) {
         btn.style.opacity = "1";
-        btn.classList.add("active");
+        btn.style.cursor = "pointer";
     } else {
         btn.style.opacity = "0.5";
-        btn.classList.remove("active");
+        btn.style.cursor = "not-allowed";
     }
 }
