@@ -3,70 +3,58 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>發送確認</title>
+    <title>發送前檢查</title>
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" type="text/javascript"></script>
     <style>
-        body { 
-            font-family: 'Segoe UI', sans-serif; 
-            padding: 20px; 
-            text-align: center;
-            background-color: #f3f2f1;
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; }
+        h3 { border-bottom: 2px solid #0078d4; padding-bottom: 10px; margin-top: 0; }
+        
+        .section { margin-bottom: 20px; border: 1px solid #e1dfdd; padding: 10px; border-radius: 4px; }
+        .section-title { font-weight: bold; margin-bottom: 10px; background: #f3f2f1; padding: 5px; }
+        
+        .item-row { display: flex; align-items: center; margin-bottom: 8px; padding: 5px; }
+        .item-row:hover { background-color: #f8f8f8; }
+        .item-row input { margin-right: 10px; transform: scale(1.2); }
+        
+        .external-tag { 
+            color: #d13438; font-size: 12px; border: 1px solid #d13438; 
+            border-radius: 3px; padding: 1px 4px; margin-left: 5px; 
         }
-        h2 { color: #323130; margin-bottom: 20px; }
-        .btn-container { 
-            display: flex; 
-            justify-content: space-around; 
-            margin-top: 30px; 
-        }
-        button {
-            padding: 10px 30px;
-            font-size: 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        /* 發送按鈕 (藍色) */
-        .btn-send {
-            background-color: #0078d4;
-            color: white;
-        }
-        .btn-send:hover { background-color: #106ebe; }
-
-        /* 取消按鈕 (灰色) */
-        .btn-cancel {
-            background-color: #ffffff;
-            color: #333;
-            border: 1px solid #8a8886;
-        }
-        .btn-cancel:hover { background-color: #edebe9; }
+        
+        .btn-container { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        
+        #btnSend { background-color: #0078d4; color: white; opacity: 0.5; cursor: not-allowed; }
+        #btnSend.active { opacity: 1; cursor: pointer; }
+        #btnSend.active:hover { background-color: #106ebe; }
+        
+        #btnCancel { background-color: #fff; border: 1px solid #888; }
     </style>
 </head>
 <body>
-    <h2>✉️ 確認發送？</h2>
-    <p>請確認收件人與附件是否正確。</p>
 
-    <div class="btn-container">
-        <button class="btn-cancel" id="btnCancel">取消</button>
-        <button class="btn-send" id="btnSend">確認發送</button>
+    <h3>🛡️ 發送檢查清單</h3>
+    <p>請逐一勾選確認下列項目：</p>
+
+    <div class="section">
+        <div class="section-title">收件人 (Recipients)</div>
+        <div id="recipients-list">
+            Loading...
+        </div>
     </div>
 
-    <script>
-        Office.onReady(() => {
-            // 綁定按鈕事件
-            
-            // 按下「確認發送」
-            document.getElementById("btnSend").onclick = () => {
-                // 傳送 "SEND" 字串給 commands.js
-                Office.context.ui.messageParent("SEND");
-            };
+    <div class="section">
+        <div class="section-title">附件 (Attachments)</div>
+        <div id="attachments-list">
+            檢查中...
+        </div>
+    </div>
 
-            // 按下「取消」
-            document.getElementById("btnCancel").onclick = () => {
-                // 傳送 "CANCEL" 字串給 commands.js
-                Office.context.ui.messageParent("CANCEL");
-            };
-        });
-    </script>
+    <div class="btn-container">
+        <button id="btnCancel">取消修改</button>
+        <button id="btnSend" disabled>確認發送</button>
+    </div>
+
+    <script src="dialog.js"></script>
 </body>
 </html>
