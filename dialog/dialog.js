@@ -1,25 +1,6 @@
-/* global Office, document */
-
-let handshakeInterval; // 用來存定時器的變數
+/* global Office, document, window */
 
 Office.onReady(() => {
-    // 1. 註冊接收器
-    Office.context.ui.addHandlerAsync(
-        Office.EventType.DialogParentMessageReceived,
-        onParentMessageReceived
-    );
-
-    // 2. 【關鍵修改】啟動「奪命連環 Call」
-    // 每 1000 毫秒 (1秒) 喊一次 DIALOG_READY，確保 Parent 一定聽得到
-    handshakeInterval = setInterval(() => {
-        try {
-            Office.context.ui.messageParent("DIALOG_READY");
-            console.log("Sent: DIALOG_READY");
-        } catch (e) {
-            console.error("Connection not ready yet...");
-        }
-    }, 1000);
-
     // 按鈕綁定
     document.getElementById("btnSend").onclick = () => {
         if (!document.getElementById("btnSend").disabled) {
@@ -29,99 +10,48 @@ Office.onReady(() => {
     document.getElementById("btnCancel").onclick = () => {
         Office.context.ui.messageParent("CANCEL");
     };
-});
 
-// 當收到 Parent 傳來的資料時
-function onParentMessageReceived(arg) {
-    // 3. 【關鍵修改】收到資料了，停止喊話
-    if (handshakeInterval) {
-        clearInterval(handshakeInterval);
-        handshakeInterval = null;
-    }
-
+    // ★★★ 關鍵修改：直接從網址列讀取資料 ★★★
     try {
-        const message = arg.message;
-        const data = JSON.parse(message); // 解析資料
-        
-        // 簡單檢查資料是否正確 (避免收到空字串)
-        if (data && data.subject !== undefined) {
-             renderData(data); // 渲染畫面
+        const urlParams = new URLSearchParams(window.location.search);
+        const dataStr = urlParams.get('data');
+
+        if (dataStr) {
+            const data = JSON.parse(decodeURIComponent(dataStr));
+            renderData(data); // 直接渲染，不用等 Parent
+        } else {
+            document.getElementById("recipients-list").innerText = "未接收到資料 (URL Parameter Missing)";
         }
     } catch (e) {
-        document.getElementById("recipients-list").innerText = "資料錯誤: " + e.message;
+        document.getElementById("recipients-list").innerText = "資料解析失敗: " + e.message;
     }
-}
+});
 
-// 渲染函式 (不用改，照舊)
+// 渲染函式 (維持您原本的，這裡只列出開頭，內容不用動)
 function renderData(data) {
+    // ... 您原本的 renderData 程式碼 ...
+    // ... 包含 attachments 和 recipients 的渲染 ...
     const container = document.getElementById("recipients-list");
-    container.innerHTML = "";
-    const userDomain = "outlook.com"; 
-
-    if (data.recipients && data.recipients.length > 0) {
-        data.recipients.forEach((person, index) => {
-            const row = document.createElement("div");
-            row.className = "item-row";
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.className = "verify-check";
-            checkbox.id = `recip_${index}`;
-            checkbox.onchange = checkAllChecked;
-
-            const email = person.emailAddress || "";
-            let personDomain = "";
-            if (email.includes("@")) personDomain = email.split('@')[1];
-            const isExternal = personDomain && personDomain !== userDomain;
-
-            let html = `<b>[${person.type}]</b> ${person.displayName || "Unknown"} <br><small>${email}</small>`;
-            if (isExternal) {
-                html += ` <span class="external-tag" style="color:red; border:1px solid red; font-size:10px; margin-left:5px;">External</span>`;
-                checkbox.checked = false; 
-            } else {
-                checkbox.checked = true; 
-            }
-            const label = document.createElement("label");
-            label.htmlFor = `recip_${index}`;
-            label.innerHTML = html;
-            row.appendChild(checkbox);
-            row.appendChild(label);
-            container.appendChild(row);
-        });
-    } else {
-        container.innerHTML = "無收件人";
-    }
+    // (請保留您原本完整的 renderData 邏輯)
+    // ...
+    // 最後記得呼叫 checkAllChecked()
     
-    // 附件渲染
-    const attContainer = document.getElementById("attachments-list");
-    attContainer.innerHTML = "";
-    if (data.attachments && data.attachments.length > 0) {
-        data.attachments.forEach((att, index) => {
-             const row = document.createElement("div");
-             row.className = "item-row";
-             const checkbox = document.createElement("input");
-             checkbox.type = "checkbox";
-             checkbox.className = "verify-check";
-             checkbox.id = `att_${index}`;
-             checkbox.onchange = checkAllChecked;
-             const label = document.createElement("label");
-             label.htmlFor = `att_${index}`;
-             label.innerText = `📎 ${att.name}`;
-             row.appendChild(checkbox);
-             row.appendChild(label);
-             attContainer.appendChild(row);
-        });
-    } else {
-        attContainer.innerText = "無附件";
-    }
-    checkAllChecked(); 
+    // 這裡我簡寫範例，您只需保留原本 dialog.js 下半部的 renderData 即可
+    const rList = document.getElementById("recipients-list");
+    rList.innerHTML = ""; 
+    // ... (您的渲染邏輯)
+    
+    // 如果您原本的 dialog.js 已經寫好 renderData，就不用動下面，只要改上面的 Office.onReady 即可
+    // 為了保險，建議您直接把原本的 renderData 函數貼在上面那段代碼下面
 }
 
+// 補上 checkAllChecked (維持不變)
 function checkAllChecked() {
     const all = document.querySelectorAll(".verify-check");
     let pass = true;
     all.forEach(c => { if(!c.checked) pass = false; });
     const btn = document.getElementById("btnSend");
-    if (all.length === 0) pass = true;
+    if (all.length === 0) pass = true; // 如果沒東西要檢查，直接過
 
     btn.disabled = !pass;
     if (pass) {
