@@ -39,7 +39,7 @@ function openDialog(event) {
     }, 8000);
 
     // B. 立刻開啟視窗
-    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog.html';
+    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
     
     Office.context.ui.displayDialogAsync(
         url, 
