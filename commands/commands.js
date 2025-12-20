@@ -2,6 +2,7 @@
 
 let dialog;
 let currentEvent;
+let broadcastTimer; // 廣播計時器
 
 Office.onReady(() => {
   // Init
@@ -25,78 +26,95 @@ function validateSend(event) {
     });
 }
 
-// 2. 開啟視窗 (URL 傳參版)
+// 2. 開啟視窗 (廣播模式)
 function openDialog(event) {
     currentEvent = event;
-
-    // A. 8秒強制止血
+    
+    // A. 3秒後強制結束 LaunchEvent 轉圈圈 (這是解決 Loading 的關鍵保險)
+    // 就算資料還沒傳完，也要先讓 Outlook 知道我們活著，避免被系統殺掉
     setTimeout(() => {
         if (currentEvent) {
-            currentEvent.completed();
+            currentEvent.completed(); 
             currentEvent = null;
         }
-    }, 8000);
+    }, 3000);
 
-    // B. 先抓資料
+    // B. 開啟視窗
+    // 請確認路徑是否正確，您之前的截圖顯示是 /dialog/dialog.html
+    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html'; 
+    
+    Office.context.ui.displayDialogAsync(
+        url, 
+        { height: 60, width: 50, displayInIframe: true },
+        (asyncResult) => {
+            if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+                console.error(asyncResult.error.message);
+            } else {
+                dialog = asyncResult.value;
+                dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
+                
+                // 視窗開啟成功，開始準備資料並廣播
+                startBroadcasting();
+            }
+        }
+    );
+}
+
+// 核心：抓資料並持續廣播
+function startBroadcasting() {
     const item = Office.context.mailbox.item;
+    
     Promise.all([
         new Promise(r => item.to.getAsync(x => r(x.value || []))),
         new Promise(r => item.cc.getAsync(x => r(x.value || []))),
         new Promise(r => item.attachments.getAsync(x => r(x.value || [])))
     ]).then(([to, cc, attachments]) => {
         
-        // 整理資料
         const payload = {
-            subject: item.subject || "(無主旨)",
+            subject: item.subject,
             recipients: [
                 ...to.map(r => ({...r, type: 'To'})),
                 ...cc.map(r => ({...r, type: 'Cc'}))
             ],
             attachments: attachments
         };
-
-        // 【關鍵】把資料轉成字串，並進行 URL 編碼
-        // 雖然有長度限制，但這是最穩定的方法
+        
         const jsonString = JSON.stringify(payload);
-        const encodedData = encodeURIComponent(jsonString);
-        
-        // 組合網址 (請確認您的路徑是否正確)
-        const url = `https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html?data=${encodedData}`;
-        
-        // C. 開啟視窗
-        Office.context.ui.displayDialogAsync(
-            url, 
-            { height: 60, width: 50, displayInIframe: true },
-            (asyncResult) => {
-                if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-                    console.error("Dialog Failed:", asyncResult.error.message);
-                    if (currentEvent) { currentEvent.completed(); currentEvent = null; }
-                } else {
-                    dialog = asyncResult.value;
-                    // 這裡只需要監聽「結果」
-                    dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
+
+        // 【關鍵】啟動廣播：每 500ms 發送一次資料
+        // 不管 Dialog 有沒有回應，一直送就對了
+        broadcastTimer = setInterval(() => {
+            if (dialog) {
+                try {
+                    dialog.messageChild(jsonString);
+                    console.log("Broadcasting data...");
+                } catch (e) {
+                    console.error("Broadcast failed:", e);
                 }
             }
-        );
+        }, 500);
     });
 }
 
-// 3. 處理回傳 (只處理驗證結果)
+// 3. 處理訊息 (只處理關閉與驗證)
 function processMessage(arg) {
     const message = arg.message;
 
-    if (message === "VERIFIED_PASS") {
+    // 如果視窗收到資料並回傳 ACK，我們可以停止廣播 (選擇性)
+    if (message === "DATA_RECEIVED") {
+        if (broadcastTimer) clearInterval(broadcastTimer);
+    }
+    else if (message === "VERIFIED_PASS") {
+        if (broadcastTimer) clearInterval(broadcastTimer);
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
             const props = result.value;
             props.set("isVerified", true); 
-            props.saveAsync(() => {
-                dialog.close();
-                if (currentEvent) { currentEvent.completed(); currentEvent = null; }
-            });
+            props.saveAsync(() => dialog.close());
         });
-    } else if (message === "CANCEL") {
+    } 
+    else if (message === "CANCEL") {
+        if (broadcastTimer) clearInterval(broadcastTimer);
         dialog.close();
-        if (currentEvent) { currentEvent.completed(); currentEvent = null; }
     }
 }
 
