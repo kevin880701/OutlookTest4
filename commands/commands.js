@@ -1,14 +1,12 @@
-/* global Office, console */
+/* global Office, console, localStorage */
 
-let dialog; // 用來存放彈窗物件
+let dialog;
 
 Office.onReady(() => {
-  // 初始化完成
+  // Init
 });
 
-// --------------------------------------------------------
-// 1. LaunchEvent: 守門員 (OnMessageSend)
-// --------------------------------------------------------
+// 1. 攔截器 (這部分沒變)
 function validateSend(event) {
     Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
         const props = result.value;
@@ -16,9 +14,7 @@ function validateSend(event) {
 
         if (isVerified === true) {
             props.remove("isVerified");
-            props.saveAsync(() => {
-                event.completed({ allowEvent: true });
-            });
+            props.saveAsync(() => event.completed({ allowEvent: true }));
         } else {
             event.completed({ 
                 allowEvent: false, 
@@ -28,18 +24,16 @@ function validateSend(event) {
     });
 }
 
-// --------------------------------------------------------
-// 2. Ribbon Action: 開啟檢查視窗 (openDialog)
-// --------------------------------------------------------
+// 2. 開啟視窗 (修改重點：改用 LocalStorage)
 function openDialog(event) {
     const item = Office.context.mailbox.item;
 
-    // 使用巢狀 Callback 確保資料都讀取完畢
+    // 讀取資料
     item.to.getAsync((resTo) => {
         item.cc.getAsync((resCc) => {
             item.attachments.getAsync((resAtt) => {
                 
-                // 1. 整理資料
+                // 整理資料
                 const payload = {
                     subject: item.subject, 
                     recipients: [
@@ -49,20 +43,21 @@ function openDialog(event) {
                     attachments: resAtt.value || []
                 };
 
-                // 2. 轉成字串並編碼
-                const jsonString = encodeURIComponent(JSON.stringify(payload));
+                // 【修正 1】將資料存入 LocalStorage，而不是塞在網址裡
+                // 這樣可以避免網址過長導致的錯誤
+                try {
+                    localStorage.setItem("outlook_verify_data", JSON.stringify(payload));
+                } catch (e) {
+                    console.error("Storage Error:", e);
+                }
                 
-                // 3. 開啟視窗
-                // 注意：URL 後面帶上參數
-                const url = `https://icy-moss-034796200.2.azurestaticapps.net/dialog.html?data=${jsonString}`;
+                // 【修正 2】網址變乾淨了，不帶參數
+                const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog.html';
 
                 Office.context.ui.displayDialogAsync(
                     url, 
                     { height: 60, width: 50, displayInIframe: true },
                     (asyncResult) => {
-                        // 【關鍵修正】
-                        // 必須等到 Dialog 嘗試開啟的 callback 回來後，才告訴 Outlook 結束事件
-                        
                         if (asyncResult.status === Office.AsyncResultStatus.Failed) {
                             console.error(asyncResult.error.message);
                         } else {
@@ -70,45 +65,30 @@ function openDialog(event) {
                             dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
                         }
 
-                        // ---> 這行搬到這裡來了！ <---
-                        // 只有當上面的 displayDialogAsync 執行之後，才通知 Outlook 按鈕動作結束
+                        // 【修正 3】無論成功失敗，都要告訴 Outlook 結束轉圈圈
                         if (event) event.completed();
                     }
                 );
             });
         });
     });
-    
-    // 原本這裡的 event.completed() 刪除，因為它跑太快了
 }
 
-// --------------------------------------------------------
-// 3. 處理 Dialog 回傳的訊息
-// --------------------------------------------------------
+// 3. 處理回傳 (這部分沒變)
 function processMessage(arg) {
     const message = arg.message;
-
     if (message === "VERIFIED_PASS") {
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
             const props = result.value;
             props.set("isVerified", true); 
-            
-            props.saveAsync((saveResult) => {
-                if (saveResult.status === Office.AsyncResultStatus.Succeeded) {
-                    dialog.close();
-                } else {
-                    console.error("存檔失敗");
-                }
-            });
+            props.saveAsync(() => dialog.close());
         });
     } else if (message === "CANCEL") {
         dialog.close();
     }
 }
 
-// 綁定全域函式
-if (typeof g === 'undefined') {
-    var g = window;
-}
+// 綁定
+if (typeof g === 'undefined') var g = window;
 g.validateSend = validateSend;
 g.openDialog = openDialog;
