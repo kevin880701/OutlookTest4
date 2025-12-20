@@ -3,7 +3,7 @@
 let dialog;
 let currentEvent;
 let fetchedData = null;
-let isDataSent = false; // 【關鍵修改】防止重複發送的旗標
+let isDataSent = false; // 【關鍵修正】防止重複發送的旗標
 
 Office.onReady(() => {
   // Init
@@ -33,7 +33,7 @@ function openDialog(event) {
     isDataSent = false; // 重置旗標
     fetchedData = null; // 重置資料
 
-    // A. 8秒止血
+    // A. 8秒強制止血 (防止轉圈圈卡死)
     setTimeout(() => {
         if (currentEvent) {
             currentEvent.completed();
@@ -41,9 +41,10 @@ function openDialog(event) {
         }
     }, 8000);
 
-    // B. 開視窗
-    // 記得確認這裡是正確路徑 /dialog/dialog.html
-    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
+    // B. 開啟視窗
+    // 【路徑確認】根據您的截圖，正確路徑應為 /dialog/dialog.html
+    // 如果您已確認現在能開視窗，請維持您目前能運作的網址即可
+    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html'; 
     
     Office.context.ui.displayDialogAsync(
         url, 
@@ -54,12 +55,13 @@ function openDialog(event) {
                 if (currentEvent) { currentEvent.completed(); currentEvent = null; }
             } else {
                 dialog = asyncResult.value;
+                // 監聽視窗傳來的訊號
                 dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
             }
         }
     );
 
-    // C. 抓資料
+    // C. 抓資料 (平行處理)
     const item = Office.context.mailbox.item;
     Promise.all([
         new Promise(r => item.to.getAsync(x => r(x.value || []))),
@@ -83,7 +85,7 @@ function processMessage(arg) {
 
     // A. 視窗說它打開了
     if (message === "DIALOG_READY") {
-        // 如果資料已經送過了，就忽略後續的 READY 訊號
+        // 如果資料已經送過了，就忽略後續的 READY 訊號 (防止重複發送)
         if (isDataSent) return;
 
         // 使用輪詢確保資料抓好了
@@ -91,11 +93,11 @@ function processMessage(arg) {
             if (fetchedData) {
                 clearInterval(waitForData);
                 
-                // 送出資料
+                // 【關鍵】送出資料給視窗
                 dialog.messageChild(JSON.stringify(fetchedData));
                 isDataSent = true; // 標記為已發送
                 
-                // 停止轉圈圈
+                // 資料送達後，才停止 Ribbon 上的轉圈圈
                 if (currentEvent) {
                     currentEvent.completed();
                     currentEvent = null;
@@ -118,6 +120,7 @@ function processMessage(arg) {
     }
 }
 
+// 綁定
 if (typeof g === 'undefined') var g = window;
 g.validateSend = validateSend;
 g.openDialog = openDialog;

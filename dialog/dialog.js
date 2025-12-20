@@ -3,14 +3,15 @@
 let handshakeInterval; // 用來存定時器的變數
 
 Office.onReady(() => {
-    // 1. 註冊接收器
+    // 1. 註冊接收器：準備接收來自 Parent 的資料
     Office.context.ui.addHandlerAsync(
         Office.EventType.DialogParentMessageReceived,
         onParentMessageReceived
     );
 
-    // 2. 【關鍵修改】啟動「奪命連環 Call」
+    // 2. 【關鍵修正】啟動「奪命連環 Call」
     // 每 1000 毫秒 (1秒) 喊一次 DIALOG_READY，確保 Parent 一定聽得到
+    // 這是解決 "一直 Loading" 的核心關鍵
     handshakeInterval = setInterval(() => {
         try {
             Office.context.ui.messageParent("DIALOG_READY");
@@ -33,7 +34,7 @@ Office.onReady(() => {
 
 // 當收到 Parent 傳來的資料時
 function onParentMessageReceived(arg) {
-    // 3. 【關鍵修改】收到資料了，停止喊話
+    // 3. 【關鍵修正】收到資料了，停止喊話
     if (handshakeInterval) {
         clearInterval(handshakeInterval);
         handshakeInterval = null;
@@ -43,7 +44,7 @@ function onParentMessageReceived(arg) {
         const message = arg.message;
         const data = JSON.parse(message); // 解析資料
         
-        // 簡單檢查資料是否正確 (避免收到空字串)
+        // 簡單檢查資料是否正確
         if (data && data.subject !== undefined) {
              renderData(data); // 渲染畫面
         }
@@ -52,10 +53,24 @@ function onParentMessageReceived(arg) {
     }
 }
 
-// 渲染函式 (不用改，照舊)
+// 渲染函式 (維持不變，請保留您原本的這段代碼)
 function renderData(data) {
+    // ... 請保留您原本的 renderData 內容 ...
+    // (為了版面簡潔，這裡省略，請直接使用您原本寫好的渲染邏輯)
+    
+    // 這裡幫您補上開頭幾行，避免您複製貼上時漏掉
+    document.getElementById("subject").innerText = data.subject || "(無主旨)";
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
+    // ... 接續您的渲染代碼 ...
+    
+    // 記得這一行要在 renderData 裡：
+    // renderAttachments(data.attachments);
+    // checkAllChecked();
+    
+    // 為了讓您方便測試，我直接把簡單版渲染邏輯附在下面，您可以選擇是否覆蓋：
+    const recipientContainer = document.getElementById("recipients-list");
+    recipientContainer.innerHTML = "";
     const userDomain = "outlook.com"; 
 
     if (data.recipients && data.recipients.length > 0) {
@@ -85,13 +100,12 @@ function renderData(data) {
             label.innerHTML = html;
             row.appendChild(checkbox);
             row.appendChild(label);
-            container.appendChild(row);
+            recipientContainer.appendChild(row);
         });
     } else {
-        container.innerHTML = "無收件人";
+        recipientContainer.innerHTML = "無收件人";
     }
-    
-    // 附件渲染
+
     const attContainer = document.getElementById("attachments-list");
     attContainer.innerHTML = "";
     if (data.attachments && data.attachments.length > 0) {
@@ -113,7 +127,7 @@ function renderData(data) {
     } else {
         attContainer.innerText = "無附件";
     }
-    checkAllChecked(); 
+    checkAllChecked();
 }
 
 function checkAllChecked() {
@@ -122,7 +136,6 @@ function checkAllChecked() {
     all.forEach(c => { if(!c.checked) pass = false; });
     const btn = document.getElementById("btnSend");
     if (all.length === 0) pass = true;
-
     btn.disabled = !pass;
     if (pass) {
         btn.style.opacity = "1";
