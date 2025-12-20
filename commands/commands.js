@@ -1,5 +1,6 @@
 /* global Office, console */
 
+let dialog;
 let currentEvent;
 
 Office.onReady(() => {
@@ -15,7 +16,7 @@ function validateSend(event) {
         if (isVerified === true) {
             props.remove("isVerified");
             // 順便清除暫存資料，保持乾淨
-            props.remove("temp_data"); 
+            props.remove("bridge_data"); 
             props.saveAsync(() => event.completed({ allowEvent: true }));
         } else {
             event.completed({ 
@@ -30,7 +31,7 @@ function validateSend(event) {
 function openDialog(event) {
     currentEvent = event;
 
-    // A. 5秒強制止血 (防止轉圈圈卡死)
+    // 【保險機制】5秒後強制停止轉圈圈 (防止程式崩潰導致 Outlook 卡死)
     setTimeout(() => {
         if (currentEvent) {
             console.log("Timeout: 強制結束轉圈");
@@ -41,7 +42,7 @@ function openDialog(event) {
 
     const item = Office.context.mailbox.item;
 
-    // B. 抓取資料
+    // A. 抓取資料
     Promise.all([
         new Promise(r => item.to.getAsync(x => r(x.value || []))),
         new Promise(r => item.cc.getAsync(x => r(x.value || []))),
@@ -49,7 +50,7 @@ function openDialog(event) {
     ]).then(([to, cc, attachments]) => {
         
         const payload = {
-            subject: item.subject,
+            subject: item.subject || "(無主旨)",
             recipients: [
                 ...to.map(r => ({...r, type: 'To'})),
                 ...cc.map(r => ({...r, type: 'Cc'}))
@@ -59,31 +60,39 @@ function openDialog(event) {
         
         const jsonString = JSON.stringify(payload);
 
-        // C. 【關鍵】把資料寫入 CustomProperties (埋時空膠囊)
+        // B. 【關鍵】把資料寫入 CustomProperties (埋入橋接資料)
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
             if (result.status === Office.AsyncResultStatus.Failed) {
                 console.error("無法讀取屬性");
+                // 就算失敗也要開視窗，不然會沒反應
+                launchDialog(); 
                 return;
             }
 
             const props = result.value;
-            // 設定暫存資料 key: "temp_data"
-            props.set("temp_data", jsonString);
+            // 設定暫存資料 key: "bridge_data"
+            props.set("bridge_data", jsonString);
 
-            // D. 存檔成功後，才打開視窗 (確保視窗讀得到)
+            // C. 存檔成功後，才打開視窗 (確保視窗讀得到)
             props.saveAsync((saveResult) => {
                 if (saveResult.status === Office.AsyncResultStatus.Succeeded) {
                     console.log("資料已寫入橋接器，準備開視窗...");
                     launchDialog();
                 } else {
                     console.error("存檔失敗");
+                    launchDialog(); // 失敗還是要開視窗
                 }
             });
         });
+    }).catch(e => {
+        console.error("資料抓取失敗:", e);
+        if (currentEvent) currentEvent.completed();
     });
 }
 
+// 輔助：開啟視窗
 function launchDialog() {
+    // 使用乾淨的網址，不帶參數，絕對不會崩潰
     const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
     
     Office.context.ui.displayDialogAsync(
@@ -93,12 +102,12 @@ function launchDialog() {
             if (asyncResult.status === Office.AsyncResultStatus.Failed) {
                 console.error("Dialog Failed:", asyncResult.error.message);
             } else {
-                const dialog = asyncResult.value;
+                dialog = asyncResult.value;
                 dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
             }
             
-            // 視窗只要一開，我們就可以結束轉圈圈了
-            // 因為資料已經存在信件裡，視窗自己會去讀
+            // 【關鍵】視窗指令送出後，立刻結束轉圈圈
+            // 因為資料已經在信件裡了，視窗自己會去讀，不用我們管
             if (currentEvent) {
                 currentEvent.completed();
                 currentEvent = null;
@@ -110,19 +119,17 @@ function launchDialog() {
 // 3. 處理回傳
 function processMessage(arg) {
     const message = arg.message;
-    // 這裡只需要處理關閉視窗的邏輯
-    // 資料讀取都在 dialog.js 內部完成
-    if (message === "CLOSE_DIALOG") {
-        // 驗證通過的邏輯在 dialog.js 寫入 isVerified 後觸發
-        // 這裡只要簡單關閉即可
-        // 但為了保險，我們還是重整一下 isVerified
+
+    if (message === "VERIFIED_PASS") {
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
              const props = result.value;
              props.set("isVerified", true);
              props.saveAsync(() => {
-                 if (currentEvent) currentEvent.completed(); // 雙重保險
+                 dialog.close();
              });
         });
+    } else if (message === "CANCEL") {
+        dialog.close();
     }
 }
 
