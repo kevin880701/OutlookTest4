@@ -2,8 +2,8 @@
 
 let dialog;
 let currentEvent;
-let fetchedData = null;
-// let isDataSent = false;  <-- 移除這個變數，我們不再限制發送次數
+let pushInterval; // 用來持續廣播資料的定時器
+let fetchedData = null; // 暫存資料
 
 Office.onReady(() => {
   // Init
@@ -27,13 +27,14 @@ function validateSend(event) {
     });
 }
 
-// 2. 開啟視窗
+// 2. 開啟視窗 & 啟動廣播
 function openDialog(event) {
     currentEvent = event;
-    fetchedData = null; // 重置資料
+    fetchedData = null; 
 
     // A. 8秒強制止血 (防止轉圈圈卡死)
     setTimeout(() => {
+        stopBroadcasting(); // 時間到，停止廣播
         if (currentEvent) {
             currentEvent.completed();
             currentEvent = null;
@@ -41,7 +42,6 @@ function openDialog(event) {
     }, 8000);
 
     // B. 開啟視窗
-    // 請確認這個路徑是您目前部署成功的路徑
     const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html'; 
     
     Office.context.ui.displayDialogAsync(
@@ -54,6 +54,9 @@ function openDialog(event) {
             } else {
                 dialog = asyncResult.value;
                 dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
+                
+                // 視窗開好了，嘗試開始廣播 (如果資料也已經準備好的話)
+                startBroadcasting();
             }
         }
     );
@@ -73,47 +76,66 @@ function openDialog(event) {
             ],
             attachments: attachments
         };
+        // 資料準備好了，嘗試開始廣播 (如果視窗也已經開好的話)
+        startBroadcasting();
     });
 }
 
-// 3. 處理訊息
+// 核心：持續廣播資料給 Dialog
+function startBroadcasting() {
+    // 必須同時滿足：1. Dialog物件存在 2. 資料已抓到
+    if (!dialog || !fetchedData) return;
+
+    // 清除舊的廣播 (避免重複)
+    if (pushInterval) clearInterval(pushInterval);
+
+    console.log("開始廣播資料給 Dialog...");
+    
+    // 每 500ms 發送一次，確保 Dialog 一打開就能收到
+    pushInterval = setInterval(() => {
+        try {
+            // 使用 messageChild 主動推播
+            dialog.messageChild(JSON.stringify(fetchedData));
+        } catch (e) {
+            console.log("廣播失敗 (視窗可能已關閉):", e);
+            stopBroadcasting();
+        }
+    }, 500);
+}
+
+function stopBroadcasting() {
+    if (pushInterval) {
+        clearInterval(pushInterval);
+        pushInterval = null;
+    }
+}
+
+// 3. 處理訊息 (只處理使用者操作)
 function processMessage(arg) {
     const message = arg.message;
 
-    // A. 視窗說它打開了 (DIALOG_READY)
-    if (message === "DIALOG_READY") {
-        // 【關鍵修正】
-        // 只要 Dialog 還在喊 READY，就代表它還沒收到資料 (或者漏接了)。
-        // 所以我們不檢查 isDataSent，只要資料準備好了就發送！
-        
-        const waitForData = setInterval(() => {
-            if (fetchedData) {
-                clearInterval(waitForData);
-                
-                // 發送資料 (Dialog 收到後會自動停止喊 READY)
-                // 這裡可能會發送多次，但沒關係，Dialog 的 renderData 會重繪，確保資料一定會顯示
-                dialog.messageChild(JSON.stringify(fetchedData));
-                
-                // 資料送出後，嘗試停止 Ribbon 轉圈圈
-                if (currentEvent) {
-                    currentEvent.completed();
-                    currentEvent = null;
-                }
-            }
-        }, 100);
+    // A. 收到 Dialog 回傳 "DATA_RECEIVED" (代表它收到了，我們可以停止廣播)
+    if (message === "DATA_RECEIVED") {
+        stopBroadcasting(); // 任務達成，停止吵鬧
     }
-
     // B. 驗證通過
     else if (message === "VERIFIED_PASS") {
+        stopBroadcasting();
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
             const props = result.value;
             props.set("isVerified", true); 
-            props.saveAsync(() => dialog.close());
+            props.saveAsync(() => {
+                dialog.close();
+                // 記得這裡也要結束轉圈圈
+                if (currentEvent) { currentEvent.completed(); currentEvent = null; }
+            });
         });
     } 
     // C. 取消
     else if (message === "CANCEL") {
+        stopBroadcasting();
         dialog.close();
+        if (currentEvent) { currentEvent.completed(); currentEvent = null; }
     }
 }
 
