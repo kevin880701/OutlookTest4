@@ -1,77 +1,114 @@
-/* global Office, document */
+/* global Office, document, window */
+
+// 1. 定義除錯工具 (一定要放在最上面)
+function log(msg) {
+    const consoleDiv = document.getElementById("debug-console");
+    if (consoleDiv) {
+        // 加上時間戳記
+        const time = new Date().toLocaleTimeString();
+        consoleDiv.innerHTML += `[${time}] ${msg}<br>`;
+        consoleDiv.scrollTop = consoleDiv.scrollHeight; // 自動捲動到底部
+    }
+}
+
+log("JS File Loaded. Waiting for Office.onReady...");
 
 Office.onReady(() => {
-    // 1. 初始化按鈕
-    document.getElementById("btnSend").onclick = () => {
-        if (!document.getElementById("btnSend").disabled) {
-            Office.context.ui.messageParent("VERIFIED_PASS");
-        }
-    };
-    document.getElementById("btnCancel").onclick = () => {
-        Office.context.ui.messageParent("CANCEL");
-    };
+    log("Office.onReady triggered! (Office環境載入成功)");
 
-    // 2. 【關鍵】直接從 URL 讀取資料
+    // 綁定按鈕
     try {
-        // 讀取瀏覽器網址列的參數
+        document.getElementById("btnSend").onclick = () => {
+            log("User clicked Send");
+            Office.context.ui.messageParent("VERIFIED_PASS");
+        };
+        document.getElementById("btnCancel").onclick = () => {
+            log("User clicked Cancel");
+            Office.context.ui.messageParent("CANCEL");
+        };
+        log("Buttons event listeners attached.");
+    } catch (e) {
+        log("Error attaching buttons: " + e.message);
+    }
+
+    // 開始讀取資料
+    try {
+        log("Current URL: " + window.location.href);
+        
         const urlParams = new URLSearchParams(window.location.search);
         const dataString = urlParams.get('data');
 
         if (dataString) {
-            // 解碼並還原資料
-            const data = JSON.parse(decodeURIComponent(dataString));
-            renderData(data); // 有資料就一定會畫出來，Loading 必消失
+            log("Found 'data' param length: " + dataString.length);
+            
+            // 嘗試解碼
+            const decoded = decodeURIComponent(dataString);
+            log("Data decoded successfully.");
+            
+            // 嘗試解析 JSON
+            const data = JSON.parse(decoded);
+            log("JSON parsed successfully.");
+            log("Recipients count: " + (data.recipients ? data.recipients.length : 0));
+
+            // 開始繪圖
+            renderData(data);
+            log("renderData finished.");
+            
         } else {
-            document.getElementById("recipients-list").innerHTML = "<span style='color:red'>錯誤：網址中沒有 data 參數</span>";
+            log("❌ ERROR: 'data' parameter is MISSING in URL.");
+            document.getElementById("recipients-list").innerText = "錯誤：網址沒有參數";
         }
+
     } catch (e) {
-        console.error(e);
-        document.getElementById("recipients-list").innerHTML = `<span style='color:red'>資料解析失敗: ${e.message}</span>`;
+        log("❌ CRITICAL ERROR: " + e.message);
+        document.getElementById("recipients-list").innerText = "程式崩潰：" + e.message;
     }
 });
 
-// --- 以下是您的渲染邏輯 (幫您保留完整結構) ---
-
 function renderData(data) {
+    log("Starting renderData...");
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
     
-    // 這裡可以根據您的需求顯示主旨
-    // if (document.getElementById("subject")) document.getElementById("subject").innerText = data.subject;
-
     // 收件人
     const userDomain = "outlook.com"; 
     if (data.recipients && data.recipients.length > 0) {
         data.recipients.forEach((person, index) => {
             const row = document.createElement("div");
             row.className = "item-row";
+            
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
             checkbox.className = "verify-check";
             checkbox.id = `recip_${index}`;
-            checkbox.onchange = checkAllChecked;
-
+            checkbox.onchange = checkAllChecked; // 綁定勾選事件
+            
+            // 預設勾選內部信箱
             const email = person.emailAddress || "";
             let personDomain = "";
             if (email.includes("@")) personDomain = email.split('@')[1];
             const isExternal = personDomain && personDomain !== userDomain;
 
-            let html = `<b>[${person.type}]</b> ${person.displayName || "Unknown"} <br><small>${email}</small>`;
+            let html = `<b>${person.displayName || "Unknown"}</b> <br><small>${email}</small>`;
             if (isExternal) {
-                html += ` <span class="external-tag" style="color:red; border:1px solid red; font-size:10px; margin-left:5px;">External</span>`;
+                html += ` <span class="external-tag">External</span>`;
                 checkbox.checked = false; 
             } else {
                 checkbox.checked = true; 
             }
+            
             const label = document.createElement("label");
             label.htmlFor = `recip_${index}`;
             label.innerHTML = html;
+            
             row.appendChild(checkbox);
             row.appendChild(label);
             container.appendChild(row);
         });
+        log("Recipients rendered.");
     } else {
         container.innerHTML = "無收件人";
+        log("No recipients found.");
     }
     
     // 附件
@@ -86,16 +123,20 @@ function renderData(data) {
              checkbox.className = "verify-check";
              checkbox.id = `att_${index}`;
              checkbox.onchange = checkAllChecked;
+             
              const label = document.createElement("label");
              label.htmlFor = `att_${index}`;
              label.innerText = `📎 ${att.name}`;
+             
              row.appendChild(checkbox);
              row.appendChild(label);
              attContainer.appendChild(row);
         });
+        log("Attachments rendered.");
     } else {
         attContainer.innerText = "無附件";
     }
+
     checkAllChecked(); 
 }
 
@@ -103,16 +144,16 @@ function checkAllChecked() {
     const all = document.querySelectorAll(".verify-check");
     let pass = true;
     all.forEach(c => { if(!c.checked) pass = false; });
+    
     const btn = document.getElementById("btnSend");
     if (all.length === 0) pass = true;
+
     btn.disabled = !pass;
     if (pass) {
         btn.style.opacity = "1";
-        btn.style.cursor = "pointer";
-        btn.innerText = "確認完畢，允許發送";
+        btn.classList.add("active");
     } else {
         btn.style.opacity = "0.5";
-        btn.style.cursor = "not-allowed";
-        btn.innerText = "請勾選所有項目";
+        btn.classList.remove("active");
     }
 }
