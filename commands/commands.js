@@ -2,49 +2,46 @@
 
 let dialog;
 let currentEvent;
-// 狀態標記
 let isDialogOpened = false;
-let isDataSaved = false;
 
 Office.onReady(() => {
   // Init
 });
 
-// 1. 攔截器 (維持不變)
+// 1. 攔截器
 function validateSend(event) {
     Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
         const props = result.value;
         const isVerified = props.get("isVerified");
 
         if (isVerified === true) {
+            // 第二次進來：驗證過了，放行！
             props.remove("isVerified");
-            props.remove("bridge_data"); // 清除暫存
+            props.remove("bridge_data"); 
             props.saveAsync(() => event.completed({ allowEvent: true }));
         } else {
-            event.completed({ 
-                allowEvent: false, 
-                errorMessage: "⚠️ 發送中止：請按「不傳送」，然後點擊上方工具列的【LaunchEvent Test】按鈕進行檢查。" 
-            });
+            // 第一次進來：還沒驗證，去開視窗
+            openDialog(event);
         }
     });
 }
 
-// 2. 開啟視窗 (先開視窗版)
+// 2. 開啟視窗
 function openDialog(event) {
     currentEvent = event;
     isDialogOpened = false;
-    isDataSaved = false;
 
-    // A. 8秒強制止血 (防止轉圈圈卡死)
+    // A. 8秒安全機制
     setTimeout(() => {
         if (currentEvent) {
-            console.log("Timeout: 強制結束轉圈");
-            currentEvent.completed();
+            console.log("Timeout: 強制結束");
+            // 【修正點 1】超時也要阻擋發送，不然沒檢查就寄出了
+            currentEvent.completed({ allowEvent: false, errorMessage: "系統回應逾時，請再試一次。" });
             currentEvent = null;
         }
     }, 8000);
 
-    // B. 【第一步】立刻開啟視窗 (確保使用者看得到反應)
+    // B. 先開視窗
     const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
     
     Office.context.ui.displayDialogAsync(
@@ -53,27 +50,27 @@ function openDialog(event) {
         (asyncResult) => {
             if (asyncResult.status === Office.AsyncResultStatus.Failed) {
                 console.error("Dialog Failed:", asyncResult.error.message);
-                // 開視窗失敗也要試著結束事件
-                checkDone();
+                if (currentEvent) {
+                    currentEvent.completed({ allowEvent: false, errorMessage: "無法開啟檢查視窗: " + asyncResult.error.message });
+                    currentEvent = null;
+                }
             } else {
                 dialog = asyncResult.value;
                 dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
                 
-                isDialogOpened = true; // 標記：視窗已開啟
-                checkDone(); // 檢查是否可以結束轉圈
+                isDialogOpened = true; 
+                checkDone(); // 視窗開好了，去通知 Outlook
             }
         }
     );
 
-    // C. 【第二步】在背景抓取並儲存資料
+    // C. 背景存資料 (維持不變)
     const item = Office.context.mailbox.item;
-
     Promise.all([
         new Promise(r => item.to.getAsync(x => r(x.value || []))),
         new Promise(r => item.cc.getAsync(x => r(x.value || []))),
         new Promise(r => item.attachments.getAsync(x => r(x.value || [])))
     ]).then(([to, cc, attachments]) => {
-        
         const payload = {
             subject: item.subject || "(無主旨)",
             recipients: [
@@ -82,38 +79,28 @@ function openDialog(event) {
             ],
             attachments: attachments
         };
-        
         const jsonString = JSON.stringify(payload);
 
-        // 寫入 CustomProperties
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
-            if (result.status === Office.AsyncResultStatus.Failed) return;
-
-            const props = result.value;
-            props.set("bridge_data", jsonString);
-
-            props.saveAsync((saveResult) => {
-                if (saveResult.status === Office.AsyncResultStatus.Succeeded) {
-                    console.log("資料已儲存");
-                    isDataSaved = true; // 標記：資料已儲存
-                    checkDone(); // 檢查是否可以結束轉圈
-                }
-            });
+            if (result.status === Office.AsyncResultStatus.Succeeded) {
+                const props = result.value;
+                props.set("bridge_data", jsonString);
+                props.saveAsync(() => console.log("資料已儲存"));
+            }
         });
-    }).catch(e => {
-        console.error("資料處理失敗:", e);
-        // 就算失敗也要讓轉圈消失
-        if (currentEvent) currentEvent.completed();
     });
 }
 
-// 檢查是否所有動作都完成了，如果是，就結束轉圈
+// 檢查是否完成
 function checkDone() {
-    // 邏輯：視窗開了，或者資料存完了，或者兩者都好了
-    // 為了使用者體驗，只要「視窗開了」其實就可以結束轉圈，
-    // 因為接下來是視窗自己去讀資料的事
     if (isDialogOpened && currentEvent) {
-        currentEvent.completed();
+        // 【修正點 2 - 最關鍵的一行】
+        // 必須設定 allowEvent: false，告訴 Outlook「先別寄！先停下來！」
+        // 這樣視窗才會留著，不會被關掉。
+        currentEvent.completed({ 
+            allowEvent: false, 
+            errorMessage: "請在彈出的視窗中確認收件人與附件，確認無誤後請再次點擊「傳送」。" 
+        });
         currentEvent = null;
     }
 }
@@ -125,9 +112,10 @@ function processMessage(arg) {
     if (message === "VERIFIED_PASS") {
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
              const props = result.value;
-             props.set("isVerified", true);
+             props.set("isVerified", true); // 寫入驗證通過標記
              props.saveAsync(() => {
                  dialog.close();
+                 // 使用者現在可以再按一次 Outlook 的「傳送」按鈕了
              });
         });
     } else if (message === "CANCEL") {
