@@ -3,7 +3,7 @@
 let dialog;
 let currentEvent;
 let fetchedData = null;
-let isDataSent = false; // 【關鍵修正】防止重複發送的旗標
+// let isDataSent = false;  <-- 移除這個變數，我們不再限制發送次數
 
 Office.onReady(() => {
   // Init
@@ -30,7 +30,6 @@ function validateSend(event) {
 // 2. 開啟視窗
 function openDialog(event) {
     currentEvent = event;
-    isDataSent = false; // 重置旗標
     fetchedData = null; // 重置資料
 
     // A. 8秒強制止血 (防止轉圈圈卡死)
@@ -42,8 +41,7 @@ function openDialog(event) {
     }, 8000);
 
     // B. 開啟視窗
-    // 【路徑確認】根據您的截圖，正確路徑應為 /dialog/dialog.html
-    // 如果您已確認現在能開視窗，請維持您目前能運作的網址即可
+    // 請確認這個路徑是您目前部署成功的路徑
     const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html'; 
     
     Office.context.ui.displayDialogAsync(
@@ -55,7 +53,6 @@ function openDialog(event) {
                 if (currentEvent) { currentEvent.completed(); currentEvent = null; }
             } else {
                 dialog = asyncResult.value;
-                // 監聽視窗傳來的訊號
                 dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
             }
         }
@@ -83,21 +80,21 @@ function openDialog(event) {
 function processMessage(arg) {
     const message = arg.message;
 
-    // A. 視窗說它打開了
+    // A. 視窗說它打開了 (DIALOG_READY)
     if (message === "DIALOG_READY") {
-        // 如果資料已經送過了，就忽略後續的 READY 訊號 (防止重複發送)
-        if (isDataSent) return;
-
-        // 使用輪詢確保資料抓好了
+        // 【關鍵修正】
+        // 只要 Dialog 還在喊 READY，就代表它還沒收到資料 (或者漏接了)。
+        // 所以我們不檢查 isDataSent，只要資料準備好了就發送！
+        
         const waitForData = setInterval(() => {
             if (fetchedData) {
                 clearInterval(waitForData);
                 
-                // 【關鍵】送出資料給視窗
+                // 發送資料 (Dialog 收到後會自動停止喊 READY)
+                // 這裡可能會發送多次，但沒關係，Dialog 的 renderData 會重繪，確保資料一定會顯示
                 dialog.messageChild(JSON.stringify(fetchedData));
-                isDataSent = true; // 標記為已發送
                 
-                // 資料送達後，才停止 Ribbon 上的轉圈圈
+                // 資料送出後，嘗試停止 Ribbon 轉圈圈
                 if (currentEvent) {
                     currentEvent.completed();
                     currentEvent = null;
