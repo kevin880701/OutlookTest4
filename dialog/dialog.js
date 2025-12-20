@@ -1,16 +1,24 @@
 /* global Office, document */
 
+let handshakeInterval; // 用來存定時器的變數
+
 Office.onReady(() => {
-    // 1. 註冊接收器：準備接收來自 Parent 的資料
+    // 1. 註冊接收器
     Office.context.ui.addHandlerAsync(
         Office.EventType.DialogParentMessageReceived,
         onParentMessageReceived
     );
 
-    // 2. 告訴 Parent 我準備好了 (延遲一下確保註冊完成)
-    setTimeout(() => {
-        Office.context.ui.messageParent("DIALOG_READY");
-    }, 200);
+    // 2. 【關鍵修改】啟動「奪命連環 Call」
+    // 每 1000 毫秒 (1秒) 喊一次 DIALOG_READY，確保 Parent 一定聽得到
+    handshakeInterval = setInterval(() => {
+        try {
+            Office.context.ui.messageParent("DIALOG_READY");
+            console.log("Sent: DIALOG_READY");
+        } catch (e) {
+            console.error("Connection not ready yet...");
+        }
+    }, 1000);
 
     // 按鈕綁定
     document.getElementById("btnSend").onclick = () => {
@@ -23,29 +31,37 @@ Office.onReady(() => {
     };
 });
 
-// 當收到資料時觸發
+// 當收到 Parent 傳來的資料時
 function onParentMessageReceived(arg) {
+    // 3. 【關鍵修改】收到資料了，停止喊話
+    if (handshakeInterval) {
+        clearInterval(handshakeInterval);
+        handshakeInterval = null;
+    }
+
     try {
         const message = arg.message;
         const data = JSON.parse(message); // 解析資料
-        renderData(data); // 畫出畫面
+        
+        // 簡單檢查資料是否正確 (避免收到空字串)
+        if (data && data.subject !== undefined) {
+             renderData(data); // 渲染畫面
+        }
     } catch (e) {
         document.getElementById("recipients-list").innerText = "資料錯誤: " + e.message;
     }
 }
 
-// 渲染函式 (維持不變，直接貼上即可)
+// 渲染函式 (不用改，照舊)
 function renderData(data) {
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
-    
-    const userDomain = "outlook.com"; // 或是從 data 裡傳進來
+    const userDomain = "outlook.com"; 
 
     if (data.recipients && data.recipients.length > 0) {
         data.recipients.forEach((person, index) => {
             const row = document.createElement("div");
             row.className = "item-row";
-            
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
             checkbox.className = "verify-check";
@@ -64,11 +80,9 @@ function renderData(data) {
             } else {
                 checkbox.checked = true; 
             }
-
             const label = document.createElement("label");
             label.htmlFor = `recip_${index}`;
             label.innerHTML = html;
-
             row.appendChild(checkbox);
             row.appendChild(label);
             container.appendChild(row);
@@ -77,7 +91,7 @@ function renderData(data) {
         container.innerHTML = "無收件人";
     }
     
-    // 附件部分
+    // 附件渲染
     const attContainer = document.getElementById("attachments-list");
     attContainer.innerHTML = "";
     if (data.attachments && data.attachments.length > 0) {
@@ -99,7 +113,6 @@ function renderData(data) {
     } else {
         attContainer.innerText = "無附件";
     }
-
     checkAllChecked(); 
 }
 
@@ -107,7 +120,6 @@ function checkAllChecked() {
     const all = document.querySelectorAll(".verify-check");
     let pass = true;
     all.forEach(c => { if(!c.checked) pass = false; });
-    
     const btn = document.getElementById("btnSend");
     if (all.length === 0) pass = true;
 
