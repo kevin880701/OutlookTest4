@@ -1,74 +1,57 @@
-/* global Office, document */
+/* global Office, document, window */
 
-// 0. 定義除錯工具 (把訊息印在黑色框框)
+// 除錯工具
 function log(msg) {
     const consoleDiv = document.getElementById("debug-console");
     if (consoleDiv) {
         const time = new Date().toLocaleTimeString();
         consoleDiv.innerHTML += `[${time}] ${msg}<br>`;
-        consoleDiv.scrollTop = consoleDiv.scrollHeight; // 自動捲動到底部
+        consoleDiv.scrollTop = consoleDiv.scrollHeight;
     }
 }
 
-log("JS File Loaded. Waiting for Office.onReady...");
+log("JS Loaded. Initializing...");
 
 Office.onReady(() => {
-    log("Office.onReady triggered! (環境載入成功)");
+    log("Office.onReady triggered.");
 
-    // 1. 註冊接收器
-    try {
-        Office.context.ui.addHandlerAsync(
-            Office.EventType.DialogParentMessageReceived,
-            onParentMessageReceived
-        );
-        log("Handler registered. Waiting for Parent to broadcast data...");
-    } catch (e) {
-        log("❌ Error registering handler: " + e.message);
-    }
-
-    // 綁定按鈕
+    // 按鈕綁定
     document.getElementById("btnSend").onclick = () => {
-        log("User clicked Send");
+        log("Sending VERIFIED_PASS...");
         Office.context.ui.messageParent("VERIFIED_PASS");
     };
     document.getElementById("btnCancel").onclick = () => {
-        log("User clicked Cancel");
+        log("Sending CANCEL...");
         Office.context.ui.messageParent("CANCEL");
     };
-});
 
-// 當收到 Parent 傳來的資料時
-function onParentMessageReceived(arg) {
-    // log("Received message from Parent!"); // 避免洗版，先註解掉
+    // 【關鍵】從 URL 解析資料
     try {
-        const message = arg.message;
-        // log("Raw message length: " + message.length);
+        log("Checking URL parameters...");
+        const urlParams = new URLSearchParams(window.location.search);
+        const dataString = urlParams.get('data');
 
-        const data = JSON.parse(message);
-        
-        // 確保資料有效才渲染
-        if (data && data.recipients) {
-             // 為了避免重複渲染導致閃爍，可以加個檢查
-             // 這裡直接渲染並記錄
-             renderData(data);
-             
-             // 回報給 Parent 說收到了 (選用)
-             Office.context.ui.messageParent("DATA_RECEIVED");
+        if (dataString) {
+            log("Data found in URL! Length: " + dataString.length);
+            
+            const decoded = decodeURIComponent(dataString);
+            const data = JSON.parse(decoded);
+            
+            log("JSON parsed. Recipients: " + (data.recipients ? data.recipients.length : 0));
+            renderData(data); // 畫出介面
+            
+        } else {
+            log("❌ No data found in URL. (Did commands.js send it?)");
+            document.getElementById("recipients-list").innerText = "錯誤：網址沒有資料";
         }
     } catch (e) {
-        log("❌ Data parse error: " + e.message);
+        log("❌ Error parsing data: " + e.message);
+        document.getElementById("recipients-list").innerText = "資料解析失敗";
     }
-}
+});
 
-let isRendered = false; // 防止重複渲染洗版 Log
-
+// 渲染函式 (維持不變)
 function renderData(data) {
-    if(!isRendered) {
-        log("✅ Rendering Data...");
-        log(`Recipients: ${data.recipients.length}, Attachments: ${data.attachments.length}`);
-        isRendered = true; // 鎖定，避免一直印 Log
-    }
-
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
     const userDomain = "outlook.com"; 
@@ -138,7 +121,6 @@ function checkAllChecked() {
     
     const btn = document.getElementById("btnSend");
     if (all.length === 0) pass = true;
-
     btn.disabled = !pass;
     if (pass) {
         btn.style.opacity = "1";

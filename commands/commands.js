@@ -2,120 +2,108 @@
 
 let dialog;
 let currentEvent;
-let broadcastTimer; 
 
 Office.onReady(() => {
   // Init
 });
 
+// 1. 攔截器
 function validateSend(event) {
-    // 簡單的攔截邏輯
-    event.completed({ 
-        allowEvent: false, 
-        errorMessage: "⚠️ 請點擊工具列按鈕進行檢查。" 
+    Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
+        const props = result.value;
+        const isVerified = props.get("isVerified");
+
+        if (isVerified === true) {
+            props.remove("isVerified");
+            props.saveAsync(() => event.completed({ allowEvent: true }));
+        } else {
+            event.completed({ 
+                allowEvent: false, 
+                errorMessage: "⚠️ 發送中止：請按「不傳送」，然後點擊上方工具列的【LaunchEvent Test】按鈕進行檢查。" 
+            });
+        }
     });
 }
 
-// 2. 開啟視窗 (安全版)
+// 2. 開啟視窗 (URL 傳值版)
 function openDialog(event) {
     currentEvent = event;
-    
-    // 【安全機制】5秒後強制停止轉圈圈，防止程式崩潰導致 Outlook 卡死
+
+    // A. 8秒後強制停止轉圈圈 (安全保險)
     setTimeout(() => {
         if (currentEvent) {
             currentEvent.completed();
             currentEvent = null;
         }
-    }, 5000);
+    }, 8000);
 
-    try {
-        // 1. 先開啟視窗 (不帶資料，避免 URL 過長崩潰)
-        // 請確認路徑是否正確
-        const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html'; 
-        
-        Office.context.ui.displayDialogAsync(
-            url, 
-            { height: 60, width: 50, displayInIframe: true },
-            (asyncResult) => {
-                if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-                    console.error("Dialog Open Failed:", asyncResult.error.message);
-                    // 如果開視窗失敗，也要記得結束轉圈
-                    if (currentEvent) { currentEvent.completed(); currentEvent = null; }
-                } else {
-                    dialog = asyncResult.value;
-                    dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
-                    
-                    // 視窗開好了，開始準備資料並廣播
-                    startBroadcasting();
-                }
-            }
-        );
-    } catch (e) {
-        console.error("Critical Error:", e);
-        // 發生意外錯誤時，確保轉圈圈停止
-        if (currentEvent) { currentEvent.completed(); currentEvent = null; }
-    }
-}
-
-// 3. 抓資料並廣播
-function startBroadcasting() {
+    // B. 抓取資料
     const item = Office.context.mailbox.item;
-    
-    // 使用 Promise 抓取資料
     Promise.all([
-        new Promise(resolve => item.to.getAsync(r => resolve(r.status === 'succeeded' ? r.value : []))),
-        new Promise(resolve => item.cc.getAsync(r => resolve(r.status === 'succeeded' ? r.value : []))),
-        new Promise(resolve => item.attachments.getAsync(r => resolve(r.status === 'succeeded' ? r.value : [])))
+        new Promise(r => item.to.getAsync(x => r(x.value || []))),
+        new Promise(r => item.cc.getAsync(x => r(x.value || []))),
+        new Promise(r => item.attachments.getAsync(x => r(x.value || [])))
     ]).then(([to, cc, attachments]) => {
         
+        // 整理資料
         const payload = {
-            subject: item.subject,
+            subject: item.subject || "(無主旨)",
             recipients: [
                 ...to.map(r => ({...r, type: 'To'})),
                 ...cc.map(r => ({...r, type: 'Cc'}))
             ],
             attachments: attachments
         };
-        
-        const jsonString = JSON.stringify(payload);
 
-        // 【廣播模式】每 500ms 發送一次資料給 Dialog
-        // 這樣 Dialog 一打開就會收到，不用依賴 URL
-        broadcastTimer = setInterval(() => {
-            if (dialog) {
-                try {
-                    dialog.messageChild(jsonString);
-                } catch (e) {
-                    // 視窗可能關閉了，忽略錯誤
+        // 【關鍵】將資料編碼放入 URL
+        let jsonString = JSON.stringify(payload);
+        let encodedData = encodeURIComponent(jsonString);
+        
+        // 檢查網址長度 (Outlook Mac 限制約 2048 chars)
+        // 如果太長，我們就只傳部分資訊或錯誤提示，避免視窗打不開
+        if (encodedData.length > 1500) {
+            console.warn("Data too long, truncating...");
+            payload.recipients = []; // 清空收件人，改為顯示提示
+            payload.subject = "⚠️ 資料量過大，請手動檢查收件人";
+            jsonString = JSON.stringify(payload);
+            encodedData = encodeURIComponent(jsonString);
+        }
+        
+        // 組合網址 (請確認您的路徑是否正確)
+        const url = `https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html?data=${encodedData}`;
+        
+        // C. 開啟視窗
+        Office.context.ui.displayDialogAsync(
+            url, 
+            { height: 60, width: 50, displayInIframe: true },
+            (asyncResult) => {
+                if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+                    console.error("Dialog Failed:", asyncResult.error.message);
+                } else {
+                    dialog = asyncResult.value;
+                    // 這裡只監聽「驗證通過」或「取消」的訊號
+                    dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
                 }
             }
-        }, 500);
-    }).catch(e => {
-        console.error("Fetch Data Failed:", e);
+        );
     });
 }
 
+// 3. 處理回傳 (只處理結果)
 function processMessage(arg) {
     const message = arg.message;
 
-    // 收到 Dialog 說 "DATA_RECEIVED"，可以停止廣播
-    if (message === "DATA_RECEIVED") {
-        if (broadcastTimer) clearInterval(broadcastTimer);
-    }
-    else if (message === "VERIFIED_PASS") {
-        if (broadcastTimer) clearInterval(broadcastTimer);
-        
+    if (message === "VERIFIED_PASS") {
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
             const props = result.value;
             props.set("isVerified", true); 
             props.saveAsync(() => {
                 dialog.close();
+                // 收到確認後，結束轉圈圈 (使用者需要再按一次傳送)
                 if (currentEvent) { currentEvent.completed(); currentEvent = null; }
             });
         });
-    } 
-    else if (message === "CANCEL") {
-        if (broadcastTimer) clearInterval(broadcastTimer);
+    } else if (message === "CANCEL") {
         dialog.close();
         if (currentEvent) { currentEvent.completed(); currentEvent = null; }
     }
