@@ -1,8 +1,6 @@
 /* global Office, console */
 
-let dialog;
 let currentEvent;
-let broadcastTimer; // 廣播計時器
 
 Office.onReady(() => {
   // Init
@@ -16,6 +14,8 @@ function validateSend(event) {
 
         if (isVerified === true) {
             props.remove("isVerified");
+            // 順便清除暫存資料，保持乾淨
+            props.remove("temp_data"); 
             props.saveAsync(() => event.completed({ allowEvent: true }));
         } else {
             event.completed({ 
@@ -26,46 +26,22 @@ function validateSend(event) {
     });
 }
 
-// 2. 開啟視窗 (廣播模式)
+// 2. 開啟視窗 (資料橋接版)
 function openDialog(event) {
     currentEvent = event;
-    
-    // 【關鍵修正 1】3秒強制止血機制
-    // 無論發生什麼事，3秒後強制告訴 Outlook "我做完了"，讓轉圈圈消失
+
+    // A. 5秒強制止血 (防止轉圈圈卡死)
     setTimeout(() => {
         if (currentEvent) {
-            console.log("強制結束轉圈圈");
-            currentEvent.completed(); 
+            console.log("Timeout: 強制結束轉圈");
+            currentEvent.completed();
             currentEvent = null;
         }
-    }, 3000);
+    }, 5000);
 
-    // 【關鍵修正 2】使用乾淨的網址 (不帶 ?data=，避免崩潰)
-    // 請確認路徑是否正確
-    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html'; 
-    
-    Office.context.ui.displayDialogAsync(
-        url, 
-        { height: 60, width: 50, displayInIframe: true },
-        (asyncResult) => {
-            if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-                console.error("Dialog Open Failed:", asyncResult.error.message);
-            } else {
-                dialog = asyncResult.value;
-                dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
-                
-                // 視窗成功開啟後，開始準備資料並廣播
-                startBroadcasting();
-            }
-        }
-    );
-}
-
-// 核心：抓資料並持續廣播
-function startBroadcasting() {
     const item = Office.context.mailbox.item;
-    
-    // 平行抓取資料
+
+    // B. 抓取資料
     Promise.all([
         new Promise(r => item.to.getAsync(x => r(x.value || []))),
         new Promise(r => item.cc.getAsync(x => r(x.value || []))),
@@ -83,46 +59,70 @@ function startBroadcasting() {
         
         const jsonString = JSON.stringify(payload);
 
-        // 【關鍵修正 3】啟動廣播：每 500ms 發送一次資料
-        // 不管 Dialog 有沒有回應，一直送就對了
-        if (broadcastTimer) clearInterval(broadcastTimer);
-        
-        broadcastTimer = setInterval(() => {
-            if (dialog) {
-                try {
-                    // 這行指令在 Mac 上最穩定，由母視窗主動推給子視窗
-                    dialog.messageChild(jsonString);
-                    console.log("Broadcasting data...");
-                } catch (e) {
-                    console.log("Broadcast waiting...");
-                }
+        // C. 【關鍵】把資料寫入 CustomProperties (埋時空膠囊)
+        Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
+            if (result.status === Office.AsyncResultStatus.Failed) {
+                console.error("無法讀取屬性");
+                return;
             }
-        }, 500);
+
+            const props = result.value;
+            // 設定暫存資料 key: "temp_data"
+            props.set("temp_data", jsonString);
+
+            // D. 存檔成功後，才打開視窗 (確保視窗讀得到)
+            props.saveAsync((saveResult) => {
+                if (saveResult.status === Office.AsyncResultStatus.Succeeded) {
+                    console.log("資料已寫入橋接器，準備開視窗...");
+                    launchDialog();
+                } else {
+                    console.error("存檔失敗");
+                }
+            });
+        });
     });
 }
 
-// 3. 處理訊息
+function launchDialog() {
+    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
+    
+    Office.context.ui.displayDialogAsync(
+        url, 
+        { height: 60, width: 50, displayInIframe: true },
+        (asyncResult) => {
+            if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+                console.error("Dialog Failed:", asyncResult.error.message);
+            } else {
+                const dialog = asyncResult.value;
+                dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
+            }
+            
+            // 視窗只要一開，我們就可以結束轉圈圈了
+            // 因為資料已經存在信件裡，視窗自己會去讀
+            if (currentEvent) {
+                currentEvent.completed();
+                currentEvent = null;
+            }
+        }
+    );
+}
+
+// 3. 處理回傳
 function processMessage(arg) {
     const message = arg.message;
-
-    // A. 視窗說 "DATA_RECEIVED" -> 停止廣播
-    if (message === "DATA_RECEIVED") {
-        if (broadcastTimer) clearInterval(broadcastTimer);
-    }
-    // B. 驗證通過
-    else if (message === "VERIFIED_PASS") {
-        if (broadcastTimer) clearInterval(broadcastTimer);
-        
+    // 這裡只需要處理關閉視窗的邏輯
+    // 資料讀取都在 dialog.js 內部完成
+    if (message === "CLOSE_DIALOG") {
+        // 驗證通過的邏輯在 dialog.js 寫入 isVerified 後觸發
+        // 這裡只要簡單關閉即可
+        // 但為了保險，我們還是重整一下 isVerified
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
-            const props = result.value;
-            props.set("isVerified", true); 
-            props.saveAsync(() => dialog.close());
+             const props = result.value;
+             props.set("isVerified", true);
+             props.saveAsync(() => {
+                 if (currentEvent) currentEvent.completed(); // 雙重保險
+             });
         });
-    } 
-    // C. 取消
-    else if (message === "CANCEL") {
-        if (broadcastTimer) clearInterval(broadcastTimer);
-        dialog.close();
     }
 }
 
