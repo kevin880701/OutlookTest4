@@ -9,8 +9,10 @@ function log(msg) {
     }
 }
 
+let pullTimer;
+
 Office.onReady(() => {
-    log("UI Ready. Waiting for Broadcast...");
+    log("UI Ready. Starting PULL request...");
 
     // 1. 註冊接收器
     Office.context.ui.addHandlerAsync(
@@ -18,9 +20,22 @@ Office.onReady(() => {
         onParentMessageReceived
     );
 
+    // 2. 【關鍵】主動向 Parent 要資料 (每秒一次)
+    pullTimer = setInterval(() => {
+        try {
+            Office.context.ui.messageParent("PULL_DATA");
+            // log("Sent: PULL_DATA"); // 怕洗版可以註解掉
+        } catch (e) {
+            log("Wait...");
+        }
+    }, 1000);
+
+    // 立即先要一次
+    Office.context.ui.messageParent("PULL_DATA");
+
+    // 按鈕綁定
     document.getElementById("btnSend").onclick = () => {
         log("Sending VERIFIED_PASS...");
-        // 這裡不能寫入屬性(會崩潰)，直接通知 Parent 去寫
         Office.context.ui.messageParent("VERIFIED_PASS");
     };
     
@@ -29,18 +44,34 @@ Office.onReady(() => {
     };
 });
 
-// 當收到 Parent 廣播來的資料時
+// 當收到 Parent 的回覆
 function onParentMessageReceived(arg) {
     try {
         const message = arg.message;
         const data = JSON.parse(message); 
         
-        if (data && data.recipients) {
-             log("✅ Data Received! Rendering...");
-             renderData(data);
+        // 情況 A: Parent 還在忙
+        if (data.status === "LOADING") {
+            log("⏳ Parent is fetching data...");
+            return;
+        }
+        
+        // 情況 B: 收到錯誤
+        if (data.error) {
+            log("❌ Parent Error: " + data.error);
+            if(pullTimer) clearInterval(pullTimer);
+            return;
+        }
+
+        // 情況 C: 收到真正的資料
+        if (data.recipients) {
+             log("✅ Data Received! Stopping PULL.");
              
-             // 告訴 Parent 別再廣播了
-             Office.context.ui.messageParent("DATA_RECEIVED");
+             // 停止請求
+             if(pullTimer) clearInterval(pullTimer);
+             
+             // 渲染畫面
+             renderData(data);
         }
     } catch (e) {
         log("Error: " + e.message);
@@ -85,7 +116,6 @@ function renderData(data) {
     checkAllChecked();
 }
 
-// 將 checkAllChecked 綁定到 window 以便 HTML 字串中的 onchange 可以呼叫
 window.checkAllChecked = function() {
     const all = document.querySelectorAll(".verify-check");
     let pass = true;

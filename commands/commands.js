@@ -2,7 +2,7 @@
 
 let dialog;
 let currentEvent;
-let broadcastTimer;
+let cachedPayload = null; // 用來暫存抓到的資料
 
 Office.onReady(() => {
   // Init
@@ -24,6 +24,7 @@ function validateSend(event) {
 
 function openDialog(event) {
     currentEvent = event;
+    cachedPayload = null; // 重置資料
 
     // A. 60秒安全機制
     setTimeout(() => {
@@ -36,7 +37,10 @@ function openDialog(event) {
         }
     }, 60000);
 
-    // B. 開啟視窗
+    // B. 馬上開始抓資料 (存入 cachedPayload)
+    fetchData();
+
+    // C. 開啟視窗
     const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
     
     Office.context.ui.displayDialogAsync(
@@ -52,16 +56,14 @@ function openDialog(event) {
             } else {
                 dialog = asyncResult.value;
                 dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
-                
-                // 視窗開啟成功，開始準備資料並廣播
-                // 注意：這裡不呼叫 completed，讓轉圈圈繼續轉，視窗才會留著
-                startBroadcasting();
+                console.log("視窗已開，等待 PULL_DATA 請求...");
             }
         }
     );
 }
 
-function startBroadcasting() {
+// 抓取資料函式
+function fetchData() {
     const item = Office.context.mailbox.item;
     
     Promise.all([
@@ -69,9 +71,8 @@ function startBroadcasting() {
         new Promise(r => item.cc.getAsync(x => r(x.value || []))),
         new Promise(r => item.attachments.getAsync(x => r(x.value || [])))
     ]).then(([to, cc, attachments]) => {
-        
-        // 整理資料 (簡化版，避免太複雜物件導致傳輸失敗)
-        const payload = {
+        // 資料抓好了，存起來
+        cachedPayload = {
             subject: item.subject || "(無主旨)",
             recipients: [
                 ...to.map(r => ({ displayName: r.displayName, emailAddress: r.emailAddress, type: 'To' })),
@@ -79,51 +80,44 @@ function startBroadcasting() {
             ],
             attachments: attachments.map(a => ({ name: a.name }))
         };
-        
-        const jsonString = JSON.stringify(payload);
-
-        // 【關鍵】持續廣播：每 500ms 發送一次
-        if (broadcastTimer) clearInterval(broadcastTimer);
-        
-        broadcastTimer = setInterval(() => {
-            if (dialog) {
-                try {
-                    // 這是 Mac 上唯一能跟 Dialog 溝通的方式
-                    dialog.messageChild(jsonString);
-                    console.log("Broadcasting...");
-                } catch (e) {
-                    console.log("Waiting for dialog...");
-                }
-            }
-        }, 500);
+        console.log("資料準備完畢 (Cached)");
+    }).catch(e => {
+        console.error("Fetch error:", e);
+        cachedPayload = { error: "資料讀取失敗: " + e.message };
     });
 }
 
+// 處理 Dialog 傳來的訊息
 function processMessage(arg) {
     const message = arg.message;
 
-    if (message === "DATA_RECEIVED") {
-        // Dialog 說收到了，停止廣播
-        if (broadcastTimer) clearInterval(broadcastTimer);
+    // A. Dialog 主動來要資料 (Pull)
+    if (message === "PULL_DATA") {
+        if (cachedPayload) {
+            // 資料已經好了，發送！
+            dialog.messageChild(JSON.stringify(cachedPayload));
+        } else {
+            // 資料還沒好，跟他說還在 Loading
+            dialog.messageChild(JSON.stringify({ status: "LOADING" }));
+        }
     }
+    // B. 驗證通過
     else if (message === "VERIFIED_PASS") {
-        if (broadcastTimer) clearInterval(broadcastTimer);
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
              const props = result.value;
              props.set("isVerified", true);
              props.saveAsync(() => {
                  dialog.close();
-                 // 告訴 Outlook 放行
                  if (currentEvent) {
                      currentEvent.completed({ allowEvent: true });
                      currentEvent = null;
                  }
              });
         });
-    } else if (message === "CANCEL") {
-        if (broadcastTimer) clearInterval(broadcastTimer);
+    } 
+    // C. 取消
+    else if (message === "CANCEL") {
         dialog.close();
-        // 告訴 Outlook 阻擋
         if (currentEvent) {
             currentEvent.completed({ allowEvent: false });
             currentEvent = null;
