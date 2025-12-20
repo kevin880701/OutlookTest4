@@ -1,7 +1,19 @@
-/* global Office, document, localStorage */
+/* global Office, document */
 
 Office.onReady(() => {
-    // 按鈕事件綁定
+    // 1. 註冊接收來自 Parent 的訊息 (messageChild)
+    Office.context.ui.addHandlerAsync(
+        Office.EventType.DialogParentMessageReceived,
+        onParentMessageReceived
+    );
+
+    // 2. 告訴 Parent 我準備好了，請給我資料
+    // 稍微延遲一點點確保 handler 註冊完畢
+    setTimeout(() => {
+        Office.context.ui.messageParent("DIALOG_READY");
+    }, 100);
+
+    // 綁定按鈕
     document.getElementById("btnSend").onclick = () => {
         if (!document.getElementById("btnSend").disabled) {
             Office.context.ui.messageParent("VERIFIED_PASS");
@@ -10,40 +22,33 @@ Office.onReady(() => {
     document.getElementById("btnCancel").onclick = () => {
         Office.context.ui.messageParent("CANCEL");
     };
-
-    // --- 修改重點 ---
-    try {
-        // 【修正 1】從 LocalStorage 讀取資料
-        const dataString = localStorage.getItem("outlook_verify_data");
-
-        if (dataString) {
-            const data = JSON.parse(dataString);
-            renderData(data); // 渲染畫面
-            
-            // (選擇性) 讀完後可以清除，保持乾淨
-            // localStorage.removeItem("outlook_verify_data");
-        } else {
-            document.getElementById("recipients-list").innerText = "無法讀取信件資料 (Storage Empty)";
-        }
-    } catch (e) {
-        // 如果出錯，直接把錯誤顯示在畫面上，方便除錯
-        document.getElementById("recipients-list").innerHTML = `<span style="color:red">Error: ${e.message}</span>`;
-    }
 });
 
-// 以下渲染函式不用動，維持原樣即可
+// 當收到 Parent 傳來的資料時
+function onParentMessageReceived(arg) {
+    try {
+        const message = arg.message;
+        const data = JSON.parse(message); // 解析 JSON 資料
+        renderData(data); // 渲染畫面
+    } catch (e) {
+        document.getElementById("recipients-list").innerText = "資料解析錯誤: " + e.message;
+    }
+}
+
+// 渲染函式 (維持原樣)
 function renderData(data) {
+    // ... 這裡完全不用動，跟您原本的程式碼一樣 ...
+    // (為了節省篇幅，請保留您原本的 renderData 和 checkAllChecked 函式)
+    
+    // 記得補上這段代碼以免您複製貼上時漏掉
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
-    
-    // 簡單模擬使用者 Domain (實務上可從 commands.js 傳入)
     const userDomain = "outlook.com"; 
 
     if (data.recipients && data.recipients.length > 0) {
         data.recipients.forEach((person, index) => {
             const row = document.createElement("div");
             row.className = "item-row";
-            
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
             checkbox.className = "verify-check";
@@ -51,12 +56,8 @@ function renderData(data) {
             checkbox.onchange = checkAllChecked;
 
             const email = person.emailAddress || "";
-            // 簡單的 Domain 比對邏輯
             let personDomain = "";
-            if (email.includes("@")) {
-                personDomain = email.split('@')[1];
-            }
-            
+            if (email.includes("@")) personDomain = email.split('@')[1];
             const isExternal = personDomain && personDomain !== userDomain;
 
             let html = `<b>[${person.type}]</b> ${person.displayName || "Unknown"} <br><small>${email}</small>`;
@@ -66,11 +67,9 @@ function renderData(data) {
             } else {
                 checkbox.checked = true; 
             }
-
             const label = document.createElement("label");
             label.htmlFor = `recip_${index}`;
             label.innerHTML = html;
-
             row.appendChild(checkbox);
             row.appendChild(label);
             container.appendChild(row);
@@ -79,24 +78,20 @@ function renderData(data) {
         container.innerHTML = "無收件人";
     }
     
-    // 渲染附件
     const attContainer = document.getElementById("attachments-list");
     attContainer.innerHTML = "";
     if (data.attachments && data.attachments.length > 0) {
         data.attachments.forEach((att, index) => {
              const row = document.createElement("div");
              row.className = "item-row";
-             
              const checkbox = document.createElement("input");
              checkbox.type = "checkbox";
              checkbox.className = "verify-check";
              checkbox.id = `att_${index}`;
              checkbox.onchange = checkAllChecked;
-             
              const label = document.createElement("label");
              label.htmlFor = `att_${index}`;
              label.innerText = `📎 ${att.name}`;
-             
              row.appendChild(checkbox);
              row.appendChild(label);
              attContainer.appendChild(row);
@@ -104,7 +99,6 @@ function renderData(data) {
     } else {
         attContainer.innerText = "無附件";
     }
-
     checkAllChecked(); 
 }
 
@@ -112,11 +106,8 @@ function checkAllChecked() {
     const all = document.querySelectorAll(".verify-check");
     let pass = true;
     all.forEach(c => { if(!c.checked) pass = false; });
-    
     const btn = document.getElementById("btnSend");
-    // 如果沒有任何項目要檢查，預設也可以過
     if (all.length === 0) pass = true;
-
     btn.disabled = !pass;
     if (pass) {
         btn.style.opacity = "1";
