@@ -2,6 +2,9 @@
 
 let dialog;
 let currentEvent;
+// 狀態標記
+let isDialogOpened = false;
+let isDataSaved = false;
 
 Office.onReady(() => {
   // Init
@@ -15,8 +18,7 @@ function validateSend(event) {
 
         if (isVerified === true) {
             props.remove("isVerified");
-            // 順便清除暫存資料，保持乾淨
-            props.remove("bridge_data"); 
+            props.remove("bridge_data"); // 清除暫存
             props.saveAsync(() => event.completed({ allowEvent: true }));
         } else {
             event.completed({ 
@@ -27,22 +29,45 @@ function validateSend(event) {
     });
 }
 
-// 2. 開啟視窗 (資料橋接版)
+// 2. 開啟視窗 (先開視窗版)
 function openDialog(event) {
     currentEvent = event;
+    isDialogOpened = false;
+    isDataSaved = false;
 
-    // 【保險機制】5秒後強制停止轉圈圈 (防止程式崩潰導致 Outlook 卡死)
+    // A. 8秒強制止血 (防止轉圈圈卡死)
     setTimeout(() => {
         if (currentEvent) {
             console.log("Timeout: 強制結束轉圈");
             currentEvent.completed();
             currentEvent = null;
         }
-    }, 5000);
+    }, 8000);
 
+    // B. 【第一步】立刻開啟視窗 (確保使用者看得到反應)
+    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
+    
+    Office.context.ui.displayDialogAsync(
+        url, 
+        { height: 60, width: 50, displayInIframe: true },
+        (asyncResult) => {
+            if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+                console.error("Dialog Failed:", asyncResult.error.message);
+                // 開視窗失敗也要試著結束事件
+                checkDone();
+            } else {
+                dialog = asyncResult.value;
+                dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
+                
+                isDialogOpened = true; // 標記：視窗已開啟
+                checkDone(); // 檢查是否可以結束轉圈
+            }
+        }
+    );
+
+    // C. 【第二步】在背景抓取並儲存資料
     const item = Office.context.mailbox.item;
 
-    // A. 抓取資料
     Promise.all([
         new Promise(r => item.to.getAsync(x => r(x.value || []))),
         new Promise(r => item.cc.getAsync(x => r(x.value || []))),
@@ -60,60 +85,37 @@ function openDialog(event) {
         
         const jsonString = JSON.stringify(payload);
 
-        // B. 【關鍵】把資料寫入 CustomProperties (埋入橋接資料)
+        // 寫入 CustomProperties
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
-            if (result.status === Office.AsyncResultStatus.Failed) {
-                console.error("無法讀取屬性");
-                // 就算失敗也要開視窗，不然會沒反應
-                launchDialog(); 
-                return;
-            }
+            if (result.status === Office.AsyncResultStatus.Failed) return;
 
             const props = result.value;
-            // 設定暫存資料 key: "bridge_data"
             props.set("bridge_data", jsonString);
 
-            // C. 存檔成功後，才打開視窗 (確保視窗讀得到)
             props.saveAsync((saveResult) => {
                 if (saveResult.status === Office.AsyncResultStatus.Succeeded) {
-                    console.log("資料已寫入橋接器，準備開視窗...");
-                    launchDialog();
-                } else {
-                    console.error("存檔失敗");
-                    launchDialog(); // 失敗還是要開視窗
+                    console.log("資料已儲存");
+                    isDataSaved = true; // 標記：資料已儲存
+                    checkDone(); // 檢查是否可以結束轉圈
                 }
             });
         });
     }).catch(e => {
-        console.error("資料抓取失敗:", e);
+        console.error("資料處理失敗:", e);
+        // 就算失敗也要讓轉圈消失
         if (currentEvent) currentEvent.completed();
     });
 }
 
-// 輔助：開啟視窗
-function launchDialog() {
-    // 使用乾淨的網址，不帶參數，絕對不會崩潰
-    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
-    
-    Office.context.ui.displayDialogAsync(
-        url, 
-        { height: 60, width: 50, displayInIframe: true },
-        (asyncResult) => {
-            if (asyncResult.status === Office.AsyncResultStatus.Failed) {
-                console.error("Dialog Failed:", asyncResult.error.message);
-            } else {
-                dialog = asyncResult.value;
-                dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
-            }
-            
-            // 【關鍵】視窗指令送出後，立刻結束轉圈圈
-            // 因為資料已經在信件裡了，視窗自己會去讀，不用我們管
-            if (currentEvent) {
-                currentEvent.completed();
-                currentEvent = null;
-            }
-        }
-    );
+// 檢查是否所有動作都完成了，如果是，就結束轉圈
+function checkDone() {
+    // 邏輯：視窗開了，或者資料存完了，或者兩者都好了
+    // 為了使用者體驗，只要「視窗開了」其實就可以結束轉圈，
+    // 因為接下來是視窗自己去讀資料的事
+    if (isDialogOpened && currentEvent) {
+        currentEvent.completed();
+        currentEvent = null;
+    }
 }
 
 // 3. 處理回傳

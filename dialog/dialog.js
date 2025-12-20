@@ -1,6 +1,5 @@
 /* global Office, document */
 
-// 簡單的 Log 工具
 function log(msg) {
     const consoleDiv = document.getElementById("debug-console");
     if (consoleDiv) {
@@ -10,44 +9,24 @@ function log(msg) {
     }
 }
 
+let pollInterval; // 輪詢計時器
+
 Office.onReady(() => {
-    log("Dialog Ready. Reading Data from Bridge...");
+    log("Dialog Opened. Start Polling for Data...");
 
-    // 1. 【關鍵】從 CustomProperties 撈資料
-    Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
-        if (result.status === Office.AsyncResultStatus.Failed) {
-            log("❌ Error loading props: " + result.error.message);
-            return;
-        }
-
-        const props = result.value;
-        const dataString = props.get("bridge_data"); // 取出資料
-
-        if (dataString) {
-            log("✅ Data found in Bridge!");
-            try {
-                const data = JSON.parse(dataString);
-                renderData(data);
-                
-                // (選用) 讀完後可以清除，這裡先保留方便除錯
-            } catch (e) {
-                log("❌ JSON Parse Error: " + e.message);
-            }
-        } else {
-            log("⚠️ Bridge is empty. (Commands.js didn't save it?)");
-            document.getElementById("recipients-list").innerText = "讀取不到資料 (請稍後重試)";
-        }
-    });
+    // 1. 啟動輪詢：每 1000ms (1秒) 檢查一次資料
+    pollInterval = setInterval(checkBridgeData, 1000);
+    
+    // 先立刻檢查一次
+    checkBridgeData();
 
     // 按鈕綁定
     document.getElementById("btnSend").onclick = () => {
         log("Saving verification...");
-        // 直接在這裡寫入驗證通過，不依賴 Parent
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
             const props = result.value;
             props.set("isVerified", true);
             props.saveAsync(() => {
-                // 通知 Parent 關閉
                 Office.context.ui.messageParent("VERIFIED_PASS");
             });
         });
@@ -58,9 +37,38 @@ Office.onReady(() => {
     };
 });
 
-// --- 渲染邏輯 (保留您原本的樣式) ---
+// 檢查橋接資料函式
+function checkBridgeData() {
+    Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
+        if (result.status === Office.AsyncResultStatus.Failed) {
+            log("❌ Load props failed: " + result.error.message);
+            return;
+        }
+
+        const props = result.value;
+        const dataString = props.get("bridge_data");
+
+        if (dataString) {
+            log("✅ Data Found! Stopping poll.");
+            
+            // 讀到了！停止輪詢
+            clearInterval(pollInterval);
+            
+            try {
+                const data = JSON.parse(dataString);
+                renderData(data);
+            } catch (e) {
+                log("❌ JSON Parse Error: " + e.message);
+            }
+        } else {
+            log("⏳ Waiting for data... (Commands.js is saving)");
+        }
+    });
+}
+
+// 渲染函式 (維持不變)
 function renderData(data) {
-    log("Rendering Data...");
+    log("Rendering UI...");
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
     
@@ -76,9 +84,7 @@ function renderData(data) {
             checkbox.className = "verify-check";
             checkbox.id = `recip_${index}`;
             checkbox.onchange = checkAllChecked;
-
-            // 預設全選
-            checkbox.checked = true;
+            checkbox.checked = true; // 預設全選
             
             // 判斷外部信箱
             const email = person.emailAddress || "";
@@ -93,9 +99,8 @@ function renderData(data) {
             }
 
             const label = document.createElement("label");
-            label.innerText = person.displayName || person.emailAddress; // Fallback
-            label.innerHTML = html; // Use HTML version
             label.htmlFor = `recip_${index}`;
+            label.innerHTML = html;
 
             row.appendChild(checkbox);
             row.appendChild(label);
@@ -117,8 +122,6 @@ function renderData(data) {
              checkbox.className = "verify-check";
              checkbox.id = `att_${index}`;
              checkbox.onchange = checkAllChecked;
-             
-             // 預設全選
              checkbox.checked = true;
 
              const label = document.createElement("label");
