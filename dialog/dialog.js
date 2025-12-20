@@ -1,19 +1,18 @@
 /* global Office, document */
 
 Office.onReady(() => {
-    // 1. 註冊接收來自 Parent 的訊息 (messageChild)
+    // 1. 註冊接收器：準備接收來自 Parent 的資料
     Office.context.ui.addHandlerAsync(
         Office.EventType.DialogParentMessageReceived,
         onParentMessageReceived
     );
 
-    // 2. 告訴 Parent 我準備好了，請給我資料
-    // 稍微延遲一點點確保 handler 註冊完畢
+    // 2. 告訴 Parent 我準備好了 (延遲一下確保註冊完成)
     setTimeout(() => {
         Office.context.ui.messageParent("DIALOG_READY");
-    }, 100);
+    }, 200);
 
-    // 綁定按鈕
+    // 按鈕綁定
     document.getElementById("btnSend").onclick = () => {
         if (!document.getElementById("btnSend").disabled) {
             Office.context.ui.messageParent("VERIFIED_PASS");
@@ -24,27 +23,29 @@ Office.onReady(() => {
     };
 });
 
-// 當收到 Parent 傳來的資料時
+// 當收到資料時觸發
 function onParentMessageReceived(arg) {
     try {
         const message = arg.message;
-        const data = JSON.parse(message); // 解析 JSON 資料
-        renderData(data); // 渲染畫面
+        const data = JSON.parse(message); // 解析資料
+        renderData(data); // 畫出畫面
     } catch (e) {
-        document.getElementById("recipients-list").innerText = "資料解析錯誤: " + e.message;
+        document.getElementById("recipients-list").innerText = "資料錯誤: " + e.message;
     }
 }
 
-// 渲染函式 (您的原始邏輯，幫您保留)
+// 渲染函式 (維持不變，直接貼上即可)
 function renderData(data) {
     const container = document.getElementById("recipients-list");
     container.innerHTML = "";
-    const userDomain = "outlook.com"; 
+    
+    const userDomain = "outlook.com"; // 或是從 data 裡傳進來
 
     if (data.recipients && data.recipients.length > 0) {
         data.recipients.forEach((person, index) => {
             const row = document.createElement("div");
             row.className = "item-row";
+            
             const checkbox = document.createElement("input");
             checkbox.type = "checkbox";
             checkbox.className = "verify-check";
@@ -63,9 +64,11 @@ function renderData(data) {
             } else {
                 checkbox.checked = true; 
             }
+
             const label = document.createElement("label");
             label.htmlFor = `recip_${index}`;
             label.innerHTML = html;
+
             row.appendChild(checkbox);
             row.appendChild(label);
             container.appendChild(row);
@@ -74,7 +77,7 @@ function renderData(data) {
         container.innerHTML = "無收件人";
     }
     
-    // 附件渲染 (保留您的邏輯)
+    // 附件部分
     const attContainer = document.getElementById("attachments-list");
     attContainer.innerHTML = "";
     if (data.attachments && data.attachments.length > 0) {
@@ -96,6 +99,7 @@ function renderData(data) {
     } else {
         attContainer.innerText = "無附件";
     }
+
     checkAllChecked(); 
 }
 
@@ -103,8 +107,10 @@ function checkAllChecked() {
     const all = document.querySelectorAll(".verify-check");
     let pass = true;
     all.forEach(c => { if(!c.checked) pass = false; });
+    
     const btn = document.getElementById("btnSend");
     if (all.length === 0) pass = true;
+
     btn.disabled = !pass;
     if (pass) {
         btn.style.opacity = "1";
