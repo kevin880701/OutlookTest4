@@ -159,7 +159,7 @@
 
             <ExtensionPoint xsi:type="LaunchEvent">
               <LaunchEvents>
-                <LaunchEvent Type="OnMessageSend" FunctionName="validateSend" SendMode="PromptUser" />
+                <LaunchEvent Type="OnMessageSend" FunctionName="validateSend" SendMode="Block" />
               </LaunchEvents>
               <SourceLocation resid="funcUrl" />
             </ExtensionPoint>
