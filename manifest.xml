@@ -7,10 +7,11 @@
   xsi:type="MailApp">
 
   <Id>a4567890-bcde-1234-5678-90abcdef1240</Id>
-  <Version>1.0.0.4</Version> <ProviderName>Liu Haoran</ProviderName>
+  <Version>1.0.0.7</Version>
+  <ProviderName>Liu Haoran</ProviderName>
   <DefaultLocale>zh-TW</DefaultLocale>
-  <DisplayName DefaultValue="LaunchEvent Test" />
-  <Description DefaultValue="LaunchEvent 測試 (Nested Structure)" />
+  <DisplayName DefaultValue="發送檢查器" />
+  <Description DefaultValue="發送前強制檢查收件人與附件" />
   <IconUrl DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-64.png" />
 
   <Hosts>
@@ -19,14 +20,14 @@
 
   <Requirements>
     <Sets>
-      <Set Name="Mailbox" MinVersion="1.4" />
+      <Set Name="Mailbox" MinVersion="1.5" />
     </Sets>
   </Requirements>
 
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/commands/commands.html"/>
+        <SourceLocation DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/taskpane.html"/>
         <RequestedHeight>250</RequestedHeight>
       </DesktopSettings>
     </Form>
@@ -36,11 +37,12 @@
 
   <Rule xsi:type="RuleCollection" Mode="Or">
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read" />
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit" />
   </Rule>
 
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
     <Requirements>
-      <bt:Sets DefaultMinVersion="1.4">
+      <bt:Sets DefaultMinVersion="1.5">
         <bt:Set Name="Mailbox" />
       </bt:Sets>
     </Requirements>
@@ -54,18 +56,18 @@
               <Group id="msgReadGroup">
                 <Label resid="groupLabel" />
                 <Control xsi:type="Button" id="msgReadOpenPaneButton">
-                  <Label resid="paneReadButtonLabel" />
+                  <Label resid="paneButtonLabel" />
                   <Supertip>
-                    <Title resid="paneReadButtonLabel" />
-                    <Description resid="paneReadButtonDesc" />
+                    <Title resid="paneButtonLabel" />
+                    <Description resid="paneButtonDesc" />
                   </Supertip>
                   <Icon>
                     <bt:Image size="16" resid="icon16" />
                     <bt:Image size="32" resid="icon32" />
                     <bt:Image size="80" resid="icon80" />
                   </Icon>
-                  <Action xsi:type="ExecuteFunction">
-                    <FunctionName>openDialog</FunctionName>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="taskpaneUrl" />
                   </Action>
                 </Control>
               </Group>
@@ -83,13 +85,14 @@
       </bt:Images>
       <bt:Urls>
         <bt:Url id="funcUrl" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/commands/commands.html" />
+        <bt:Url id="taskpaneUrl" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/taskpane.html" />
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="groupLabel" DefaultValue="測試功能" />
-        <bt:String id="paneReadButtonLabel" DefaultValue="Hello彈窗" />
+        <bt:String id="groupLabel" DefaultValue="發送檢查" />
+        <bt:String id="paneButtonLabel" DefaultValue="開啟檢查清單" />
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="paneReadButtonDesc" DefaultValue="點擊後跳出 Hello World 視窗" />
+        <bt:String id="paneButtonDesc" DefaultValue="開啟側邊欄以確認收件人與附件" />
       </bt:LongStrings>
     </Resources>
 
@@ -111,46 +114,23 @@
           <DesktopFormFactor>
             <FunctionFile resid="funcUrl" />
 
-            <ExtensionPoint xsi:type="MessageReadCommandSurface">
-              <OfficeTab id="TabDefault">
-                <Group id="msgReadGroup">
-                  <Label resid="groupLabel" />
-                  <Control xsi:type="Button" id="msgReadOpenPaneButton">
-                    <Label resid="paneReadButtonLabel" />
-                    <Supertip>
-                      <Title resid="paneReadButtonLabel" />
-                      <Description resid="paneReadButtonDesc" />
-                    </Supertip>
-                    <Icon>
-                      <bt:Image size="16" resid="icon16" />
-                      <bt:Image size="32" resid="icon32" />
-                      <bt:Image size="80" resid="icon80" />
-                    </Icon>
-                    <Action xsi:type="ExecuteFunction">
-                      <FunctionName>openDialog</FunctionName>
-                    </Action>
-                  </Control>
-                </Group>
-              </OfficeTab>
-            </ExtensionPoint>
-
             <ExtensionPoint xsi:type="MessageComposeCommandSurface">
               <OfficeTab id="TabDefault">
                 <Group id="msgComposeGroup">
                   <Label resid="groupLabel" />
                   <Control xsi:type="Button" id="msgComposeOpenPaneButton">
-                    <Label resid="paneReadButtonLabel" />
+                    <Label resid="paneButtonLabel" />
                     <Supertip>
-                      <Title resid="paneReadButtonLabel" />
-                      <Description resid="paneReadButtonDesc" />
+                      <Title resid="paneButtonLabel" />
+                      <Description resid="paneButtonDesc" />
                     </Supertip>
                     <Icon>
                       <bt:Image size="16" resid="icon16" />
                       <bt:Image size="32" resid="icon32" />
                       <bt:Image size="80" resid="icon80" />
                     </Icon>
-                    <Action xsi:type="ExecuteFunction">
-                      <FunctionName>openDialog</FunctionName>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="taskpaneUrl" />
                     </Action>
                   </Control>
                 </Group>
@@ -176,13 +156,14 @@
         </bt:Images>
         <bt:Urls>
           <bt:Url id="funcUrl" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/commands/commands.html" />
+          <bt:Url id="taskpaneUrl" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/taskpane.html" />
         </bt:Urls>
         <bt:ShortStrings>
-          <bt:String id="groupLabel" DefaultValue="測試功能" />
-          <bt:String id="paneReadButtonLabel" DefaultValue="Hello彈窗" />
+          <bt:String id="groupLabel" DefaultValue="發送檢查" />
+          <bt:String id="paneButtonLabel" DefaultValue="開啟檢查清單" />
         </bt:ShortStrings>
         <bt:LongStrings>
-          <bt:String id="paneReadButtonDesc" DefaultValue="點擊後跳出 Hello World 視窗" />
+          <bt:String id="paneButtonDesc" DefaultValue="開啟側邊欄以確認收件人與附件" />
         </bt:LongStrings>
       </Resources>
     </VersionOverrides>
