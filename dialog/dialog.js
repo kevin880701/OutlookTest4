@@ -36,7 +36,14 @@ Office.onReady(() => {
     // 按鈕綁定
     document.getElementById("btnSend").onclick = () => {
         log("Sending VERIFIED_PASS...");
+        
+        // 傳送訊號給 Parent (commands.js)
         Office.context.ui.messageParent("VERIFIED_PASS");
+        
+        // 【新增】視覺回饋，因為視窗關閉需要一點時間
+        const btn = document.getElementById("btnSend");
+        btn.innerText = "驗證完成，視窗關閉中...";
+        btn.disabled = true;
     };
     
     document.getElementById("btnCancel").onclick = () => {

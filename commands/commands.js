@@ -1,49 +1,43 @@
 /* global Office, console */
 
 let dialog;
-let currentEvent;
+// 移除 currentEvent 全域變數，因為我們不再需要在視窗關閉時"恢復"原本的發送事件
 let cachedPayload = null; 
 
 Office.onReady(() => {
   // Init
 });
 
+// 1. 發送攔截 (OnMessageSend)
 function validateSend(event) {
     Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
         const props = result.value;
         const isVerified = props.get("isVerified");
 
         if (isVerified === true) {
-            // 已經驗證過了，直接放行 (秒傳)
-            props.remove("isVerified");
+            // 情況 A: 已經驗證過了，放行
+            // (選擇性：如果希望每次都要檢查，可以在這裡 remove("isVerified")，但在你的情境保留比較好)
+            props.remove("isVerified"); // 發送後清除，以免下次轉寄時誤判
             props.saveAsync(() => event.completed({ allowEvent: true }));
         } else {
-            // 還沒驗證，去開視窗
-            openDialog(event);
+            // 情況 B: 還沒驗證，直接阻擋，並提示使用者
+            // 注意：Mac 上不能在這裡呼叫 openDialog，會被系統擋掉
+            event.completed({ 
+                allowEvent: false, 
+                errorMessage: "⚠️ 請點擊工具列上的 [Hello彈窗] 按鈕來確認收件人，確認後再按傳送。" 
+            });
         }
     });
 }
 
+// 2. 使用者手動點擊 Ribbon 按鈕觸發此函式
 function openDialog(event) {
-    currentEvent = event;
-    cachedPayload = null; 
-
-    // A. 60秒安全機制
-    setTimeout(() => {
-        if (currentEvent) {
-            currentEvent.completed({ 
-                allowEvent: false, 
-                errorMessage: "檢查逾時，請重新點擊傳送。" 
-            });
-            currentEvent = null;
-        }
-    }, 60000);
-
-    // B. 馬上開始抓資料
+    // 這裡的 event 是按鈕點擊事件，不是發送事件，所以不需要 completed({allowEvent...})
+    
+    // 準備資料
     fetchData();
 
-    // C. 開啟視窗
-    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html';
+    const url = 'https://icy-moss-034796200.2.azurestaticapps.net/dialog/dialog.html'; // 請確認你的 URL
     
     Office.context.ui.displayDialogAsync(
         url, 
@@ -51,15 +45,12 @@ function openDialog(event) {
         (asyncResult) => {
             if (asyncResult.status === Office.AsyncResultStatus.Failed) {
                 console.error("Dialog Failed:", asyncResult.error.message);
-                if (currentEvent) {
-                    currentEvent.completed({ allowEvent: false, errorMessage: "視窗開啟失敗" });
-                    currentEvent = null;
-                }
             } else {
                 dialog = asyncResult.value;
                 dialog.addEventHandler(Office.EventType.DialogMessageReceived, processMessage);
-                console.log("視窗已開，等待 PULL_DATA 請求...");
             }
+            // 處理 Ribbon 按鈕的 event 結束
+            if (event) event.completed();
         }
     );
 }
@@ -80,14 +71,12 @@ function fetchData() {
             ],
             attachments: attachments.map(a => ({ name: a.name }))
         };
-        console.log("資料準備完畢 (Cached)");
     }).catch(e => {
-        console.error("Fetch error:", e);
         cachedPayload = { error: "資料讀取失敗: " + e.message };
     });
 }
 
-// 3. 處理回傳
+// 3. 處理 Dialog 回傳的訊息
 function processMessage(arg) {
     const message = arg.message;
 
@@ -99,30 +88,24 @@ function processMessage(arg) {
         }
     }
     else if (message === "VERIFIED_PASS") {
+        // 使用者在視窗按了「確認發送」
         Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
              const props = result.value;
+             // 設定驗證通過標記
              props.set("isVerified", true);
              props.saveAsync(() => {
-                 // 【關鍵修正】先告訴 Outlook 放行，再關閉視窗
-                 // 這樣可以避免視窗關閉後 Context 丟失
-                 if (currentEvent) {
-                     currentEvent.completed({ allowEvent: true });
-                     currentEvent = null;
-                 }
                  dialog.close();
+                 // 這裡不需要呼叫 event.completed，因為原本的發送請求已經在第一步被我們擋掉了
+                 // 使用者現在只需要再次點擊 Outlook 的「傳送」按鈕即可
              });
         });
     } 
     else if (message === "CANCEL") {
-        // 先告訴 Outlook 阻擋
-        if (currentEvent) {
-            currentEvent.completed({ allowEvent: false });
-            currentEvent = null;
-        }
         dialog.close();
     }
 }
 
+// 註冊全域函式
 if (typeof g === 'undefined') var g = window;
 g.validateSend = validateSend;
 g.openDialog = openDialog;
