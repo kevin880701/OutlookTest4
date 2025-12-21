@@ -1,123 +1,54 @@
-/* global Office, document */
-
-Office.onReady(() => {
-    // 1. 初始化時直接抓資料
-    loadItemData();
-
-    // 2. 綁定按鈕事件
-    document.getElementById("btnVerify").onclick = markAsVerified;
-});
-
-function loadItemData() {
-    // 側邊欄可以直接存取目前的 Item，不需要 messageParent
-    const item = Office.context.mailbox.item;
-
-    // 使用 Promise.all 同時讀取 To, CC, Attachments
-    Promise.all([
-        new Promise(r => item.to.getAsync(x => r(x.value || []))),
-        new Promise(r => item.cc.getAsync(x => r(x.value || []))),
-        new Promise(r => item.getAttachmentsAsync(x => r(x.value || [])))
-    ]).then(([to, cc, attachments]) => {
-        renderList(to, cc, attachments);
-    }).catch(err => {
-        console.error(err);
-        document.getElementById("recipients-list").innerText = "讀取錯誤: " + err.message;
-    });
-}
-
-function renderList(to, cc, attachments) {
-    const rList = document.getElementById("recipients-list");
-    const aList = document.getElementById("attachments-list");
-    
-    rList.innerHTML = "";
-    aList.innerHTML = "";
-
-    let hasItems = false;
-
-    // 渲染收件人 (合併 To 和 CC)
-    [...to, ...cc].forEach((p, i) => {
-        hasItems = true;
-        const type = to.includes(p) ? "To" : "Cc"; // 簡單區分
-        const div = document.createElement("div");
-        div.className = "item-row";
-        // 為了確保 ID 唯一，加個前綴
-        div.innerHTML = `
-            <input type='checkbox' class='verify-check' id='r_${i}' onchange='checkAllChecked()'>
-            <label for='r_${i}'>
-                <span style="font-weight:bold; color:#666">[${type}]</span> 
-                ${p.displayName || p.emailAddress}
-            </label>
-        `;
-        rList.appendChild(div);
-    });
-
-    if ([...to, ...cc].length === 0) {
-        rList.innerHTML = "<div style='padding:5px; font-size:12px'>(無收件人)</div>";
-    }
-
-    // 渲染附件
-    attachments.forEach((a, i) => {
-        hasItems = true;
-        const div = document.createElement("div");
-        div.className = "item-row";
-        div.innerHTML = `
-            <input type='checkbox' class='verify-check' id='a_${i}' onchange='checkAllChecked()'>
-            <label for='a_${i}'>📎 ${a.name}</label>
-        `;
-        aList.appendChild(div);
-    });
-
-    if (attachments.length === 0) {
-        aList.innerHTML = "<div style='padding:5px; font-size:12px'>(無附件)</div>";
-    }
-
-    // 防呆：如果完全沒東西(例如自己寄給自己但沒填人?)，直接開鎖
-    if (!hasItems) {
-        enableButton();
-    }
-}
-
-// 檢查是否全部勾選
-// 必須掛載到 window 才能被 HTML 的 onchange 呼叫
-window.checkAllChecked = function() {
-    const all = document.querySelectorAll(".verify-check");
-    let pass = true;
-    all.forEach(c => { if(!c.checked) pass = false; });
-    
-    if (pass) enableButton();
-    else disableButton();
-};
-
-function enableButton() {
-    const btn = document.getElementById("btnVerify");
-    btn.disabled = false;
-    btn.classList.add("active");
-    btn.innerText = "✅ 確認無誤 (解除鎖定)";
-}
-
-function disableButton() {
-    const btn = document.getElementById("btnVerify");
-    btn.disabled = true;
-    btn.classList.remove("active");
-    btn.innerText = "請勾選所有項目...";
-}
-
-function markAsVerified() {
-    // 寫入自訂屬性 isVerified = true
-    Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
-        const props = result.value;
-        props.set("isVerified", true); // 設定標記
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>發送檢查清單</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" type="text/javascript"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 15px; color: #333; }
+        h3 { border-bottom: 2px solid #0078d4; padding-bottom: 10px; margin-top: 0; }
         
-        props.saveAsync((saveResult) => {
-            if (saveResult.status === Office.AsyncResultStatus.Succeeded) {
-                // UI 回饋
-                document.getElementById("btnVerify").style.display = "none";
-                document.getElementById("status-msg").style.display = "block";
-            } else {
-                // 錯誤處理
-                document.getElementById("btnVerify").innerText = "❌ 儲存失敗，請重試";
-                console.error(saveResult.error);
-            }
-        });
-    });
-}
+        .section { margin-bottom: 20px; border: 1px solid #e1dfdd; padding: 10px; border-radius: 4px; background-color: #faf9f8; }
+        .section-title { font-weight: bold; margin-bottom: 10px; color: #0078d4; font-size: 14px; }
+        
+        .item-row { display: flex; align-items: start; margin-bottom: 8px; padding: 5px; border-bottom: 1px solid #eee;}
+        .item-row label { margin-left: 8px; word-break: break-all; font-size: 13px; cursor: pointer;}
+        .item-row input { margin-top: 3px; cursor: pointer; }
+        
+        /* 按鈕區 */
+        .btn-container { margin-top: 20px; text-align: center; }
+        button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 14px; transition: all 0.3s;}
+        
+        #btnVerify { background-color: #0078d4; color: white; opacity: 0.5; pointer-events: none; }
+        #btnVerify.active { opacity: 1; pointer-events: auto; }
+        
+        #status-msg { margin-top: 15px; color: green; display: none; text-align: center; font-weight: bold; border: 1px solid green; padding: 10px; background: #eaffea; border-radius: 4px;}
+        
+        .loading { color: #666; font-style: italic; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <h3>🛡️ 發送前檢查</h3>
+    <p style="font-size:12px; color:#666; margin-bottom: 15px;">請勾選下方所有項目以解除發送鎖定。</p>
+
+    <div class="section">
+        <div class="section-title">收件人 (Recipients)</div>
+        <div id="recipients-list" class="loading">讀取資料中...</div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">附件 (Attachments)</div>
+        <div id="attachments-list" class="loading">讀取資料中...</div>
+    </div>
+
+    <div class="btn-container">
+        <button id="btnVerify" disabled>請勾選所有項目...</button>
+    </div>
+    
+    <div id="status-msg">✅ 驗證完成！<br>現在您可以按下「傳送」按鈕了。</div>
+
+    <script src="taskpane.js"></script>
+</body>
+</html>
