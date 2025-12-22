@@ -1,9 +1,7 @@
 /* global Office, document */
 
 Office.onReady((info) => {
-    // 確保 DOM 載入後才執行
     if (info.host === Office.HostType.Outlook) {
-        // 使用 try-catch 確保即使初始化失敗也能顯示錯誤
         try {
             loadItemData();
             document.getElementById("btnVerify").onclick = markAsVerified;
@@ -13,7 +11,6 @@ Office.onReady((info) => {
     }
 });
 
-// 錯誤顯示 helper
 function logError(msg) {
     const el = document.getElementById("error-log");
     el.style.display = "block";
@@ -21,7 +18,6 @@ function logError(msg) {
     console.error(msg);
 }
 
-// 取得 Email 的網域 (強化防呆)
 function getDomain(email) {
     if (!email || typeof email !== 'string') return "unknown";
     if (!email.includes("@")) return "unknown";
@@ -36,14 +32,12 @@ function loadItemData() {
         return;
     }
 
-    // 定義一個安全的 Promise wrapper，避免單一失敗導致全部卡住
     const safeGet = (apiCall) => new Promise(resolve => {
         try {
             apiCall(result => {
                 if (result.status === Office.AsyncResultStatus.Succeeded) {
                     resolve(result.value);
                 } else {
-                    // 即使失敗也 resolve null，不要 reject 導致全部停住
                     console.warn("API Failed:", result.error);
                     resolve(null);
                 }
@@ -62,21 +56,16 @@ function loadItemData() {
         safeGet(cb => item.getAttachmentsAsync(cb))
     ]).then(([from, to, cc, bcc, attachments]) => {
         
-        // 確保陣列不為 null (Fallback to empty array)
         to = to || [];
         cc = cc || [];
         bcc = bcc || [];
         attachments = attachments || [];
 
-        // 1. 獲取寄件人網域
-        // 注意：新草稿有時 from 為 null，預設為空字串，這會導致所有人都變成 External (這是安全的做法)
         const senderEmail = (from && from.emailAddress) ? from.emailAddress : "";
         const senderDomain = getDomain(senderEmail);
         
-        // 渲染寄件人
         renderSender("from-container", from);
 
-        // 2. 渲染列表
         renderGroupedList("to-list", to, senderDomain);
         renderGroupedList("cc-list", cc, senderDomain);
         renderGroupedList("bcc-list", bcc, senderDomain);
@@ -93,7 +82,6 @@ function loadItemData() {
 function renderSender(containerId, data) {
     const container = document.getElementById(containerId);
     if (!data) {
-        // 如果抓不到寄件者，顯示提示但不報錯
         container.innerHTML = "<div class='empty-msg'>寄件者資訊讀取中或未設定</div>";
         return;
     }
@@ -115,7 +103,6 @@ function renderGroupedList(containerId, dataArray, senderDomain) {
         return;
     }
 
-    // 分組邏輯
     const groups = {};
     dataArray.forEach(p => {
         const domain = getDomain(p.emailAddress);
@@ -123,7 +110,7 @@ function renderGroupedList(containerId, dataArray, senderDomain) {
         groups[domain].push(p);
     });
 
-    // 排序：External 在前
+    // 排序：External 排前面
     const sortedDomains = Object.keys(groups).sort((a, b) => {
         const aIsExt = a !== senderDomain;
         const bIsExt = b !== senderDomain;
@@ -131,7 +118,7 @@ function renderGroupedList(containerId, dataArray, senderDomain) {
     });
 
     sortedDomains.forEach(domain => {
-        const isExternal = domain !== senderDomain; // 如果 senderDomain 是空字串，這裡會全變成 true (安全)
+        const isExternal = domain !== senderDomain;
         const recipients = groups[domain];
 
         const groupDiv = document.createElement("div");
@@ -151,16 +138,14 @@ function renderGroupedList(containerId, dataArray, senderDomain) {
             const rowDiv = document.createElement("div");
             rowDiv.className = "item-row";
             
-            // 只有 External 才有 Checkbox
-            let controlHtml = "";
-            if (isExternal) {
-                controlHtml = `<input type='checkbox' class='verify-check' onchange='checkAllChecked()'>`;
-            } else {
-                controlHtml = `<span class="safe-icon">🛡️</span>`;
-            }
-
+            // --- 核心修改 ---
+            // 1. 所有人都有 checkbox
+            // 2. 如果是 External -> 預設不勾 ("")
+            // 3. 如果是 Internal -> 預設勾選 ("checked")
+            const checkedState = isExternal ? "" : "checked";
+            
             rowDiv.innerHTML = `
-                ${controlHtml}
+                <input type='checkbox' class='verify-check' ${checkedState} onchange='checkAllChecked()'>
                 <div class="item-content">
                     <div class="name">${p.displayName || p.emailAddress}</div>
                     <div class="email">${p.emailAddress}</div>
@@ -195,6 +180,8 @@ function renderAttachments(containerId, dataArray) {
     });
 }
 
+// 檢查邏輯：現在 Internal 也有 checkbox，
+// 所以如果使用者手動把 Internal 取消勾選，這裡會回傳 false，按鈕會變回 Disabled (符合預期)
 window.checkAllChecked = function() {
     const allCheckboxes = document.querySelectorAll(".verify-check");
     let pass = true;
@@ -227,7 +214,8 @@ function disableButton() {
     let uncheckCount = 0;
     all.forEach(c => { if(!c.checked) uncheckCount++; });
     
-    btn.innerText = uncheckCount > 0 ? `請檢查外部收件人 (${uncheckCount})` : "請勾選所有項目...";
+    // 這裡的文字顯示 "未勾選項目"，因為現在內部也可以被取消勾選
+    btn.innerText = uncheckCount > 0 ? `尚有 ${uncheckCount} 個項目未確認` : "請勾選所有項目...";
 }
 
 function markAsVerified() {

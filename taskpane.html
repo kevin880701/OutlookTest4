@@ -85,8 +85,11 @@
         .item-row { display: flex; align-items: flex-start; padding: 8px 12px; border-bottom: 1px solid rgba(0,0,0,0.05); }
         .item-row:last-child { border-bottom: none; }
         
+        /* Checkbox 樣式 */
         .item-row input[type="checkbox"] { margin-top: 3px; margin-right: 10px; width: 16px; height: 16px; accent-color: var(--color-brand); cursor: pointer; }
-        .safe-icon { margin-right: 10px; width: 16px; text-align: center; color: green; font-size: 14px; }
+        
+        /* 寄件者用的 icon */
+        .safe-icon { margin-right: 10px; width: 16px; text-align: center; font-size: 14px; }
         
         .item-content { flex: 1; overflow: hidden; }
         .name { font-size: 14px; font-weight: 500; }
@@ -108,8 +111,6 @@
         button:disabled { background-color: #ccc; cursor: not-allowed; opacity: 0.7; }
 
         #status-msg { display: none; text-align: center; padding: 20px; color: var(--text-success); font-weight: bold; }
-        
-        /* 錯誤顯示區 (只有出錯時才會看到) */
         #error-log { color: red; font-size: 12px; margin-top: 10px; white-space: pre-wrap; display: none; border: 1px solid red; padding: 5px;}
     </style>
 </head>
