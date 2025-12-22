@@ -8,23 +8,20 @@ Office.onReady(() => {
 function loadItemData() {
     const item = Office.context.mailbox.item;
 
-    // 同時讀取所有需要的欄位
     Promise.all([
-        new Promise(r => item.from.getAsync(x => r(x.value))),       // 寄件人 (通常是物件)
-        new Promise(r => item.to.getAsync(x => r(x.value || []))),   // 收件人 (陣列)
-        new Promise(r => item.cc.getAsync(x => r(x.value || []))),   // 副本 (陣列)
-        new Promise(r => item.bcc.getAsync(x => r(x.value || []))),  // 密件副本 (陣列)
-        new Promise(r => item.getAttachmentsAsync(x => r(x.value || []))) // 附件 (陣列)
+        new Promise(r => item.from.getAsync(x => r(x.value))),
+        new Promise(r => item.to.getAsync(x => r(x.value || []))),
+        new Promise(r => item.cc.getAsync(x => r(x.value || []))),
+        new Promise(r => item.bcc.getAsync(x => r(x.value || []))),
+        new Promise(r => item.getAttachmentsAsync(x => r(x.value || [])))
     ]).then(([from, to, cc, bcc, attachments]) => {
         
-        // 渲染各個區塊
         renderSingleItem("from-list", from);
         renderList("to-list", to);
         renderList("cc-list", cc);
         renderList("bcc-list", bcc);
         renderAttachments("attachments-list", attachments);
 
-        // 如果所有欄位都是空的 (極端情況)，也要檢查一下按鈕狀態
         checkAllChecked();
 
     }).catch(err => {
@@ -33,9 +30,6 @@ function loadItemData() {
     });
 }
 
-/**
- * 渲染單一項目 (用於 From)
- */
 function renderSingleItem(containerId, data) {
     const container = document.getElementById(containerId);
     container.innerHTML = "";
@@ -45,22 +39,18 @@ function renderSingleItem(containerId, data) {
         return;
     }
 
-    // 建立 Checkbox
     const div = document.createElement("div");
     div.className = "item-row";
     div.innerHTML = `
         <input type='checkbox' class='verify-check' id='chk_${containerId}' onchange='checkAllChecked()'>
         <label for='chk_${containerId}'>
-            ${data.displayName || data.emailAddress} <br>
-            <span style="font-size:11px; color:#666;">&lt;${data.emailAddress}&gt;</span>
+            ${data.displayName || data.emailAddress} 
+            <span class="email-sub">&lt;${data.emailAddress}&gt;</span>
         </label>
     `;
     container.appendChild(div);
 }
 
-/**
- * 渲染人員列表 (用於 To, Cc, Bcc)
- */
 function renderList(containerId, dataArray) {
     const container = document.getElementById(containerId);
     container.innerHTML = "";
@@ -84,9 +74,6 @@ function renderList(containerId, dataArray) {
     });
 }
 
-/**
- * 渲染附件列表 (邏輯類似，但顯示名稱欄位不同)
- */
 function renderAttachments(containerId, dataArray) {
     const container = document.getElementById(containerId);
     container.innerHTML = "";
@@ -108,12 +95,11 @@ function renderAttachments(containerId, dataArray) {
     });
 }
 
-// 檢查是否全部勾選 (這個邏輯不用變，它會自動抓頁面上所有的 .verify-check)
 window.checkAllChecked = function() {
     const all = document.querySelectorAll(".verify-check");
     let pass = true;
     
-    if (all.length === 0) pass = true; // 如果完全沒有任何需要檢查的東西
+    if (all.length === 0) pass = true;
     else {
         all.forEach(c => { 
             if(!c.checked) pass = false; 
@@ -124,11 +110,13 @@ window.checkAllChecked = function() {
     else disableButton();
 };
 
+// --- 修改重點：按鈕文字設定 ---
 function enableButton() {
     const btn = document.getElementById("btnVerify");
     btn.disabled = false;
     btn.classList.add("active");
-    btn.innerText = "✅ 確認無誤 (解除鎖定)";
+    // 這裡移除了 unicode icon，並更新了文字
+    btn.innerText = "確認完成並送出";
 }
 
 function disableButton() {
@@ -137,6 +125,7 @@ function disableButton() {
     btn.classList.remove("active");
     btn.innerText = "請勾選所有項目...";
 }
+// ----------------------------
 
 function markAsVerified() {
     Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
