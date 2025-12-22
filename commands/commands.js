@@ -19,7 +19,7 @@ function validateSend(event) {
             // 系統會自動跳出提示框，顯示下方的 errorMessage
             event.completed({ 
                 allowEvent: false, 
-                errorMessage: "⚠️ 請點擊上方「開啟檢查清單」按鈕，確認收件人後再發送。" 
+                errorMessage: "請點擊上方「開啟檢查清單」按鈕，確認收件人後再發送。" 
             });
         }
     });
