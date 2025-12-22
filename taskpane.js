@@ -48,18 +48,17 @@ function loadItemData() {
         }
     });
 
+    // 移除 item.getAttachmentsAsync
     Promise.all([
         safeGet(cb => item.from.getAsync(cb)),
         safeGet(cb => item.to.getAsync(cb)),
         safeGet(cb => item.cc.getAsync(cb)),
-        safeGet(cb => item.bcc.getAsync(cb)),
-        safeGet(cb => item.getAttachmentsAsync(cb))
-    ]).then(([from, to, cc, bcc, attachments]) => {
+        safeGet(cb => item.bcc.getAsync(cb))
+    ]).then(([from, to, cc, bcc]) => {
         
         to = to || [];
         cc = cc || [];
         bcc = bcc || [];
-        attachments = attachments || [];
 
         const senderEmail = (from && from.emailAddress) ? from.emailAddress : "";
         const senderDomain = getDomain(senderEmail);
@@ -70,7 +69,7 @@ function loadItemData() {
         renderGroupedList("cc-list", cc, senderDomain);
         renderGroupedList("bcc-list", bcc, senderDomain);
         
-        renderAttachments("attachments-list", attachments);
+        // 附件渲染已移除
 
         checkAllChecked();
 
@@ -138,10 +137,8 @@ function renderGroupedList(containerId, dataArray, senderDomain) {
             const rowDiv = document.createElement("div");
             rowDiv.className = "item-row";
             
-            // --- 核心修改 ---
-            // 1. 所有人都有 checkbox
-            // 2. 如果是 External -> 預設不勾 ("")
-            // 3. 如果是 Internal -> 預設勾選 ("checked")
+            // 如果是 External -> 預設不勾 ("")
+            // 如果是 Internal -> 預設勾選 ("checked")
             const checkedState = isExternal ? "" : "checked";
             
             rowDiv.innerHTML = `
@@ -158,30 +155,8 @@ function renderGroupedList(containerId, dataArray, senderDomain) {
     });
 }
 
-function renderAttachments(containerId, dataArray) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = "";
+// 移除 renderAttachments 函式
 
-    if (!dataArray || dataArray.length === 0) {
-        container.innerHTML = "<div class='empty-msg'>(無附件)</div>";
-        return;
-    }
-
-    dataArray.forEach((a, i) => {
-        const div = document.createElement("div");
-        div.className = "item-row";
-        div.innerHTML = `
-            <input type='checkbox' class='verify-check' id='att_${i}' onchange='checkAllChecked()'>
-            <div class="item-content">
-                <label for='att_${i}' style="cursor:pointer" class="name">📎 ${a.name}</label>
-            </div>
-        `;
-        container.appendChild(div);
-    });
-}
-
-// 檢查邏輯：現在 Internal 也有 checkbox，
-// 所以如果使用者手動把 Internal 取消勾選，這裡會回傳 false，按鈕會變回 Disabled (符合預期)
 window.checkAllChecked = function() {
     const allCheckboxes = document.querySelectorAll(".verify-check");
     let pass = true;
@@ -214,7 +189,6 @@ function disableButton() {
     let uncheckCount = 0;
     all.forEach(c => { if(!c.checked) uncheckCount++; });
     
-    // 這裡的文字顯示 "未勾選項目"，因為現在內部也可以被取消勾選
     btn.innerText = uncheckCount > 0 ? `尚有 ${uncheckCount} 個項目未確認` : "請勾選所有項目...";
 }
 
