@@ -1,235 +1,246 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>發送檢查器</title>
-    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js" type="text/javascript"></script>
-    <style>
-        /* --- CSS 變數系統 --- */
-        :root {
-            --bg-body: #ffffff;
-            --text-primary: #323130;
-            --text-secondary: #605e5c;
-            --bg-card: #f8f9fa;
-            --border-card: #e1dfdd;
-            --color-brand: #0078d4;
-            --color-brand-hover: #106ebe;
-            --color-disabled: #c8c6c4;
-            --bg-success: #dff6dd;
-            --text-success: #107c10;
+/* global Office, document */
+
+Office.onReady((info) => {
+    // 確保 DOM 載入後才執行
+    if (info.host === Office.HostType.Outlook) {
+        // 使用 try-catch 確保即使初始化失敗也能顯示錯誤
+        try {
+            loadItemData();
+            document.getElementById("btnVerify").onclick = markAsVerified;
+        } catch (e) {
+            logError("Init Error: " + e.message);
+        }
+    }
+});
+
+// 錯誤顯示 helper
+function logError(msg) {
+    const el = document.getElementById("error-log");
+    el.style.display = "block";
+    el.innerText += "❌ " + msg + "\n";
+    console.error(msg);
+}
+
+// 取得 Email 的網域 (強化防呆)
+function getDomain(email) {
+    if (!email || typeof email !== 'string') return "unknown";
+    if (!email.includes("@")) return "unknown";
+    return email.split("@")[1].toLowerCase().trim();
+}
+
+function loadItemData() {
+    const item = Office.context.mailbox.item;
+
+    if (!item) {
+        logError("無法讀取郵件物件 (Item is null)");
+        return;
+    }
+
+    // 定義一個安全的 Promise wrapper，避免單一失敗導致全部卡住
+    const safeGet = (apiCall) => new Promise(resolve => {
+        try {
+            apiCall(result => {
+                if (result.status === Office.AsyncResultStatus.Succeeded) {
+                    resolve(result.value);
+                } else {
+                    // 即使失敗也 resolve null，不要 reject 導致全部停住
+                    console.warn("API Failed:", result.error);
+                    resolve(null);
+                }
+            });
+        } catch (e) {
+            console.error("API Call Error:", e);
+            resolve(null);
+        }
+    });
+
+    Promise.all([
+        safeGet(cb => item.from.getAsync(cb)),
+        safeGet(cb => item.to.getAsync(cb)),
+        safeGet(cb => item.cc.getAsync(cb)),
+        safeGet(cb => item.bcc.getAsync(cb)),
+        safeGet(cb => item.getAttachmentsAsync(cb))
+    ]).then(([from, to, cc, bcc, attachments]) => {
+        
+        // 確保陣列不為 null (Fallback to empty array)
+        to = to || [];
+        cc = cc || [];
+        bcc = bcc || [];
+        attachments = attachments || [];
+
+        // 1. 獲取寄件人網域
+        // 注意：新草稿有時 from 為 null，預設為空字串，這會導致所有人都變成 External (這是安全的做法)
+        const senderEmail = (from && from.emailAddress) ? from.emailAddress : "";
+        const senderDomain = getDomain(senderEmail);
+        
+        // 渲染寄件人
+        renderSender("from-container", from);
+
+        // 2. 渲染列表
+        renderGroupedList("to-list", to, senderDomain);
+        renderGroupedList("cc-list", cc, senderDomain);
+        renderGroupedList("bcc-list", bcc, senderDomain);
+        
+        renderAttachments("attachments-list", attachments);
+
+        checkAllChecked();
+
+    }).catch(err => {
+        logError("Load Data Error: " + err.message);
+    });
+}
+
+function renderSender(containerId, data) {
+    const container = document.getElementById(containerId);
+    if (!data) {
+        // 如果抓不到寄件者，顯示提示但不報錯
+        container.innerHTML = "<div class='empty-msg'>寄件者資訊讀取中或未設定</div>";
+        return;
+    }
+    container.innerHTML = `
+        <div class="safe-icon">👤</div>
+        <div class="item-content">
+            <div class="name">${data.displayName || data.emailAddress}</div>
+            <div class="email">${data.emailAddress}</div>
+        </div>
+    `;
+}
+
+function renderGroupedList(containerId, dataArray, senderDomain) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = "";
+
+    if (!dataArray || dataArray.length === 0) {
+        container.innerHTML = "<div class='empty-msg'>(無)</div>";
+        return;
+    }
+
+    // 分組邏輯
+    const groups = {};
+    dataArray.forEach(p => {
+        const domain = getDomain(p.emailAddress);
+        if (!groups[domain]) groups[domain] = [];
+        groups[domain].push(p);
+    });
+
+    // 排序：External 在前
+    const sortedDomains = Object.keys(groups).sort((a, b) => {
+        const aIsExt = a !== senderDomain;
+        const bIsExt = b !== senderDomain;
+        return bIsExt - aIsExt; 
+    });
+
+    sortedDomains.forEach(domain => {
+        const isExternal = domain !== senderDomain; // 如果 senderDomain 是空字串，這裡會全變成 true (安全)
+        const recipients = groups[domain];
+
+        const groupDiv = document.createElement("div");
+        groupDiv.className = "domain-group";
+
+        const headerDiv = document.createElement("div");
+        headerDiv.className = "domain-header";
+        
+        const tagHtml = isExternal 
+            ? `<span class="tag external">External</span>` 
+            : `<span class="tag internal">Internal</span>`;
+        
+        headerDiv.innerHTML = `<span>@${domain}</span> ${tagHtml}`;
+        groupDiv.appendChild(headerDiv);
+
+        recipients.forEach((p, i) => {
+            const rowDiv = document.createElement("div");
+            rowDiv.className = "item-row";
             
-            /* 新增：標籤顏色 */
-            --tag-external-bg: #fde7e9;
-            --tag-external-text: #c50f1f;
-            --tag-internal-bg: #e6f2fb;
-            --tag-internal-text: #0078d4;
-            --header-domain-bg: #eaeaea;
-        }
-
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg-body: #262626;
-                --text-primary: #ffffff;
-                --text-secondary: #d0d0d0;
-                --bg-card: #333333;
-                --border-card: #444444;
-                --color-brand: #2899f5;
-                --color-brand-hover: #4badf8;
-                --color-disabled: #555555;
-                --bg-success: #0b2a0b;
-                --text-success: #6ccb5f;
-
-                /* 深色模式下的標籤顏色調整 */
-                --tag-external-bg: #3b0d11;
-                --tag-external-text: #ff99a4; /* 淺紅色，黑底易讀 */
-                --tag-internal-bg: #0d1e2e;
-                --tag-internal-text: #6cb8f6;
-                --header-domain-bg: #444444;
+            // 只有 External 才有 Checkbox
+            let controlHtml = "";
+            if (isExternal) {
+                controlHtml = `<input type='checkbox' class='verify-check' onchange='checkAllChecked()'>`;
+            } else {
+                controlHtml = `<span class="safe-icon">🛡️</span>`;
             }
-        }
 
-        body { 
-            font-family: 'Segoe UI', system-ui, sans-serif; 
-            padding: 15px; 
-            background-color: var(--bg-body); 
-            color: var(--text-primary);
-            margin: 0;
-            padding-bottom: 80px; /* 預留底部按鈕空間 */
-        }
+            rowDiv.innerHTML = `
+                ${controlHtml}
+                <div class="item-content">
+                    <div class="name">${p.displayName || p.emailAddress}</div>
+                    <div class="email">${p.emailAddress}</div>
+                </div>
+            `;
+            groupDiv.appendChild(rowDiv);
+        });
 
-        header {
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--color-brand);
-        }
-        h3 { margin: 0; font-size: 18px; font-weight: 600; }
-        .subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 5px; }
+        container.appendChild(groupDiv);
+    });
+}
 
-        /* 卡片容器 */
-        .section { 
-            margin-bottom: 15px; 
-            background-color: var(--bg-card); 
-            border: 1px solid var(--border-card); 
-            border-radius: 8px; 
-            overflow: hidden; /* 讓內部的圓角生效 */
-        }
-        
-        .section-title { 
-            padding: 8px 12px;
-            font-weight: 700; 
-            color: var(--text-primary); 
-            font-size: 13px; 
-            background-color: rgba(0,0,0,0.03);
-            border-bottom: 1px solid var(--border-card);
-        }
+function renderAttachments(containerId, dataArray) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = "";
 
-        /* --- 網域分組樣式 --- */
-        .domain-group {
-            border-bottom: 1px solid var(--border-card);
-        }
-        .domain-group:last-child { border-bottom: none; }
+    if (!dataArray || dataArray.length === 0) {
+        container.innerHTML = "<div class='empty-msg'>(無附件)</div>";
+        return;
+    }
 
-        .domain-header {
-            padding: 6px 12px;
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            background-color: var(--header-domain-bg);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        /* 標籤 Tag 樣式 */
-        .tag {
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        .tag.external { background-color: var(--tag-external-bg); color: var(--tag-external-text); }
-        .tag.internal { background-color: var(--tag-internal-bg); color: var(--tag-internal-text); }
-
-        /* 人員列表項目 */
-        .item-row { 
-            display: flex; 
-            align-items: flex-start; 
-            padding: 8px 12px; 
-            border-bottom: 1px solid rgba(0,0,0,0.05);
-        }
-        .item-row:last-child { border-bottom: none; }
-        
-        /* Checkbox */
-        .item-row input[type="checkbox"] {
-            margin-top: 3px;
-            margin-right: 10px;
-            width: 16px; 
-            height: 16px;
-            accent-color: var(--color-brand);
-            cursor: pointer;
-        }
-
-        /* 內部人員的 icon (取代 checkbox) */
-        .safe-icon {
-            margin-right: 10px;
-            width: 16px;
-            text-align: center;
-            color: var(--color-disabled);
-            font-size: 14px;
-        }
-        
-        .item-content { flex: 1; overflow: hidden; }
-        .name { font-size: 14px; font-weight: 500; }
-        .email { font-size: 12px; color: var(--text-secondary); word-break: break-all; }
-        .empty-msg { padding: 10px; color: var(--text-secondary); font-size: 13px; font-style: italic; }
-
-        /* 按鈕區 */
-        .btn-container { 
-            position: fixed; 
-            bottom: 0; 
-            left: 0; 
-            right: 0;
-            background: var(--bg-body); 
-            padding: 15px; 
-            border-top: 1px solid var(--border-card);
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-        }
-        
-        button { 
-            padding: 12px; 
-            border: none; 
-            border-radius: 6px; 
-            width: 100%; 
-            font-size: 15px; 
-            font-weight: 600;
-            transition: all 0.2s;
-            background-color: var(--color-brand);
-            color: white;
-            cursor: pointer;
-        }
-        button:disabled {
-            background-color: var(--color-disabled);
-            cursor: not-allowed;
-            opacity: 0.7;
-        }
-        button.active:hover {
-            transform: translateY(-1px);
-            filter: brightness(1.1);
-        }
-
-        #status-msg {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            color: var(--text-success);
-            font-weight: bold;
-        }
-    </style>
-</head>
-<body>
-
-    <header>
-        <h3>發送前檢查</h3>
-        <div class="subtitle">外部網域請務必勾選確認</div>
-    </header>
-
-    <div class="section">
-        <div class="section-title">寄件者 (From)</div>
-        <div id="from-container" class="item-row" style="padding: 10px 12px;">
+    dataArray.forEach((a, i) => {
+        const div = document.createElement("div");
+        div.className = "item-row";
+        div.innerHTML = `
+            <input type='checkbox' class='verify-check' id='att_${i}' onchange='checkAllChecked()'>
+            <div class="item-content">
+                <label for='att_${i}' style="cursor:pointer" class="name">📎 ${a.name}</label>
             </div>
-    </div>
+        `;
+        container.appendChild(div);
+    });
+}
 
-    <div class="section">
-        <div class="section-title">收件人 (To)</div>
-        <div id="to-list">讀取中...</div>
-    </div>
+window.checkAllChecked = function() {
+    const allCheckboxes = document.querySelectorAll(".verify-check");
+    let pass = true;
+    
+    if (allCheckboxes.length === 0) {
+        pass = true;
+    } else {
+        allCheckboxes.forEach(c => { 
+            if(!c.checked) pass = false; 
+        });
+    }
+    
+    if (pass) enableButton();
+    else disableButton();
+};
 
-    <div class="section">
-        <div class="section-title">副本 (Cc)</div>
-        <div id="cc-list">讀取中...</div>
-    </div>
+function enableButton() {
+    const btn = document.getElementById("btnVerify");
+    btn.disabled = false;
+    btn.classList.add("active");
+    btn.innerText = "確認完成並送出";
+}
 
-    <div class="section">
-        <div class="section-title">密件副本 (Bcc)</div>
-        <div id="bcc-list">讀取中...</div>
-    </div>
+function disableButton() {
+    const btn = document.getElementById("btnVerify");
+    btn.disabled = true;
+    btn.classList.remove("active");
+    
+    const all = document.querySelectorAll(".verify-check");
+    let uncheckCount = 0;
+    all.forEach(c => { if(!c.checked) uncheckCount++; });
+    
+    btn.innerText = uncheckCount > 0 ? `請檢查外部收件人 (${uncheckCount})` : "請勾選所有項目...";
+}
 
-    <div class="section">
-        <div class="section-title">附件 (Attachments)</div>
-        <div id="attachments-list">讀取中...</div>
-    </div>
-
-    <div id="status-msg">
-        <div style="font-size: 24px;">🎉</div>
-        檢查完成，請傳送！
-    </div>
-
-    <div class="btn-container" id="btn-area">
-        <button id="btnVerify" disabled>請檢查外部收件人...</button>
-    </div>
-
-    <script src="taskpane.js"></script>
-</body>
-</html>
+function markAsVerified() {
+    Office.context.mailbox.item.loadCustomPropertiesAsync((result) => {
+        const props = result.value;
+        props.set("isVerified", true);
+        props.saveAsync((saveResult) => {
+            if (saveResult.status === Office.AsyncResultStatus.Succeeded) {
+                document.getElementById("btn-area").style.display = "none";
+                document.getElementById("status-msg").style.display = "block";
+            } else {
+                logError("儲存失敗: " + saveResult.error.message);
+            }
+        });
+    });
+}
