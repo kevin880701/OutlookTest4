@@ -7,7 +7,7 @@
   xsi:type="MailApp">
 
   <Id>a4567890-bcde-1234-5678-90abcdef1240</Id>
-  <Version>1.0.0.7</Version>
+  <Version>1.0.0.9</Version>
   <ProviderName>Liu Haoran</ProviderName>
   <DefaultLocale>zh-TW</DefaultLocale>
   <DisplayName DefaultValue="發送檢查器" />
@@ -113,7 +113,6 @@
 
           <DesktopFormFactor>
             <FunctionFile resid="funcUrl" />
-
             <ExtensionPoint xsi:type="MessageComposeCommandSurface">
               <OfficeTab id="TabDefault">
                 <Group id="msgComposeGroup">
@@ -143,8 +142,35 @@
               </LaunchEvents>
               <SourceLocation resid="funcUrl" />
             </ExtensionPoint>
-
           </DesktopFormFactor>
+
+          <MobileFormFactor>
+            <FunctionFile resid="funcUrl" />
+            <ExtensionPoint xsi:type="MobileMessageComposeCommandSurface">
+              <Group id="mobileComposeGroup">
+                <Label resid="groupLabel" />
+                <Control xsi:type="MobileButton" id="mobileComposeButton">
+                  <Label resid="paneButtonLabel" />
+                  <Icon xsi:type="bt:MobileIconList">
+                    <bt:Image scale="1" size="25" resid="mobile_icon_scale_1" />
+                    <bt:Image scale="1" size="32" resid="mobile_icon_scale_1" />
+                    <bt:Image scale="1" size="48" resid="mobile_icon_scale_2" />
+                    
+                    <bt:Image scale="2" size="25" resid="mobile_icon_scale_1" />
+                    <bt:Image scale="2" size="32" resid="mobile_icon_scale_1" />
+                    <bt:Image scale="2" size="48" resid="mobile_icon_scale_2" />
+                    
+                    <bt:Image scale="3" size="25" resid="mobile_icon_scale_1" />
+                    <bt:Image scale="3" size="32" resid="mobile_icon_scale_1" />
+                    <bt:Image scale="3" size="48" resid="mobile_icon_scale_2" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="taskpaneUrl" />
+                  </Action>
+                </Control>
+              </Group>
+            </ExtensionPoint>
+          </MobileFormFactor>
         </Host>
       </Hosts>
 
@@ -153,7 +179,11 @@
           <bt:Image id="icon16" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-16.png" />
           <bt:Image id="icon32" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-32.png" />
           <bt:Image id="icon80" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-80.png" />
+          
+          <bt:Image id="mobile_icon_scale_1" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-32.png" />
+          <bt:Image id="mobile_icon_scale_2" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/assets/icon-64.png" />
         </bt:Images>
+
         <bt:Urls>
           <bt:Url id="funcUrl" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/commands/commands.html" />
           <bt:Url id="taskpaneUrl" DefaultValue="https://icy-moss-034796200.2.azurestaticapps.net/taskpane.html" />
