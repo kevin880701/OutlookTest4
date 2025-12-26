@@ -1,615 +1,531 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, User, ClipboardList, Home, CheckCircle, Plus, ChevronRight, ChevronLeft, ArrowLeft, Users, Settings, LogOut, XCircle, FileText } from 'lucide-react';
-
-// --- Mock Data & Constants ---
-
-const INITIAL_STUDENTS = [
-  { id: 1, name: '我自己', dob: '1990-01-01', height: '175', size: 'L', phone: '0912345678' }
-];
-
-const INITIAL_CLASSES = [
-  { id: 101, title: 'U8 基礎訓練', date: '2025-12-27', time: '10:00 - 11:30', price: 300, level: 'U8', location: 'A場地' },
-  { id: 102, title: 'U10 進階實戰', date: '2025-12-27', time: '14:00 - 16:00', price: 400, level: 'U10', location: 'B場地' },
-  { id: 103, title: 'U12 菁英培訓', date: '2025-12-28', time: '09:00 - 12:00', price: 500, level: 'U12', location: 'A場地' },
-  { id: 104, title: 'U8 趣味競賽', date: '2025-12-28', time: '13:00 - 15:00', price: 300, level: 'U8', location: 'C場地' },
-  { id: 105, title: 'U10 戰術分析', date: '2026-01-05', time: '19:00 - 20:30', price: 350, level: 'U10', location: '會議室' },
-];
-
-const INITIAL_BOOKINGS = [
-  { id: 1001, classId: 101, studentId: 1, status: 'booked', timestamp: '2025-12-20T10:00:00Z' },
-  { id: 1003, classId: 103, studentId: 1, status: 'booked', timestamp: '2025-12-22T09:30:00Z' }
-];
-
-const PACKAGES = [
-  { id: 'p1', title: 'U8 季票方案', price: 6000, sessions: 12, desc: '包含本季所有 U8 課程，自動排課' },
-  { id: 'p2', title: 'U10 季票方案', price: 7200, sessions: 12, desc: '包含本季所有 U10 課程，自動排課' },
-];
-
-// --- Components ---
-
-const Card = ({ children, className = "" }) => (
-  <div className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden ${className}`}>
-    {children}
-  </div>
-);
-
-const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }) => {
-  const baseStyle = "px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 active:scale-95";
-  const variants = {
-    primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200",
-    secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200",
-    outline: "border border-blue-600 text-blue-600 hover:bg-blue-50",
-    danger: "bg-red-50 text-red-600 hover:bg-red-100",
-    success: "bg-green-500 text-white hover:bg-green-600 shadow-md shadow-green-200",
-    ghost: "bg-transparent text-gray-500 hover:bg-gray-100"
-  };
-  return (
-    <button 
-      onClick={onClick} 
-      disabled={disabled}
-      className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed active:scale-100' : ''} ${className}`}
-    >
-      {children}
-    </button>
-  );
-};
-
-const Badge = ({ children, color = 'blue' }) => {
-  const colors = {
-    blue: 'bg-blue-100 text-blue-700',
-    green: 'bg-green-100 text-green-700',
-    gray: 'bg-gray-100 text-gray-700',
-    orange: 'bg-orange-100 text-orange-700'
-  };
-  return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[color] || colors.blue}`}>
-      {children}
-    </span>
-  );
-};
-
-// --- Main App Component ---
-
-export default function App() {
-  const [currentView, setCurrentView] = useState('parent'); // 'parent' or 'coach'
-  const [activeTab, setActiveTab] = useState('single'); // single, package, schedule, profile
-  
-  // Data State
-  const [students, setStudents] = useState(INITIAL_STUDENTS);
-  const [bookings, setBookings] = useState(INITIAL_BOOKINGS); 
-  const [showModal, setShowModal] = useState(false);
-  const [selectedClass, setSelectedClass] = useState(null);
-  const [toast, setToast] = useState(null);
-
-  // Calendar State
-  const [calendarDate, setCalendarDate] = useState(new Date(2025, 11, 1)); 
-  const [selectedDate, setSelectedDate] = useState(null); // 'YYYY-MM-DD'
-
-  // Coach View State
-  const [coachSelectedClassId, setCoachSelectedClassId] = useState(null);
-
-  // Helper to show toast
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  // --- Parent Actions ---
-
-  const handleBookClick = (cls) => {
-    setSelectedClass(cls);
-    if (students.length > 0) {
-      setShowModal(true);
-    } else {
-       showToast('系統錯誤：無使用者資料', 'error');
-    }
-  };
-
-  const confirmBooking = () => {
-    const studentId = students[0].id;
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>運動課程預約</title>
     
-    const alreadyBooked = bookings.some(b => b.classId === selectedClass.id && b.studentId === studentId);
-    if (alreadyBooked) {
-      showToast('您已報名此課程', 'error');
-      setShowModal(false);
-      return;
-    }
-
-    const newBooking = {
-      id: Date.now(),
-      classId: selectedClass.id,
-      studentId: studentId,
-      status: 'booked', 
-      timestamp: new Date().toISOString()
-    };
-
-    setBookings([...bookings, newBooking]);
-    setShowModal(false);
-    showToast('報名成功！請至「我的課表」查看');
-  };
-
-  // --- Coach Actions ---
-
-  const handleToggleCheckIn = (bookingId) => {
-    let message = '';
-    setBookings(bookings.map(b => {
-      if (b.id === bookingId) {
-        const isCheckingIn = b.status === 'booked';
-        message = isCheckingIn ? '報到成功' : '已取消報到';
-        return { ...b, status: isCheckingIn ? 'checked-in' : 'booked' };
-      }
-      return b;
-    }));
-    showToast(message, 'success');
-  };
-
-  // --- Render Helpers ---
-
-  const getClassName = (id) => INITIAL_CLASSES.find(c => c.id === id)?.title || '未知課程';
-  const getClassDate = (id) => INITIAL_CLASSES.find(c => c.id === id)?.date || '';
-
-  // Calendar Helpers
-  const getDaysInMonth = (date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDayOfWeek = new Date(year, month, 1).getDay(); 
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     
-    const days = [];
-    for (let i = 0; i < firstDayOfWeek; i++) {
-      days.push(null);
-    }
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push(new Date(year, month, i));
-    }
-    return days;
-  };
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  const formatDate = (date) => {
-    if (!date) return '';
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
+    <script src="https://unpkg.com/lucide@latest"></script>
 
-  const hasClassOnDate = (dateStr) => {
-    return bookings.some(b => getClassDate(b.classId) === dateStr);
-  };
+    <style>
+        /* 隱藏捲軸但保留功能 */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* 解決 iOS 底部安全距離 */
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* 動畫效果 */
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        .animate-in { animation: fade-in 0.3s ease-out; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
 
-  // --- Views ---
+    <div id="root"></div>
 
-  const renderParentSingleClass = () => (
-    <div className="space-y-4 pb-24">
-      <div className="bg-blue-600 p-6 text-white rounded-b-3xl mb-4 shadow-lg">
-        <h2 className="text-2xl font-bold">單堂報名</h2>
-        <p className="opacity-90 mt-1">選擇適合您的課程</p>
-      </div>
-      
-      <div className="px-4 space-y-4">
-        {INITIAL_CLASSES.map(cls => (
-          <Card key={cls.id} className="flex flex-col">
-            <div className="p-4">
-              <div className="flex justify-between items-start mb-2">
-                <Badge color="blue">{cls.level}</Badge>
-                <span className="font-bold text-blue-600">${cls.price}</span>
-              </div>
-              <h3 className="text-lg font-bold text-gray-800 mb-1">{cls.title}</h3>
-              <div className="flex items-center text-gray-500 text-sm mb-1">
-                <Calendar size={14} className="mr-1" /> {cls.date}
-              </div>
-              <div className="flex items-center text-gray-500 text-sm mb-3">
-                <ClipboardList size={14} className="mr-1" /> {cls.time} • {cls.location}
-              </div>
-              <Button onClick={() => handleBookClick(cls)} className="w-full">
-                立即報名
-              </Button>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- 設定區域 ---
+        const LIFF_ID = "你的_LIFF_ID_填在這裡"; 
+        // ---------------
+
+        // --- 1. Icon 處理 (因為沒有 npm，我們用 Wrapper 包裝 Lucide) ---
+        const LucideIcon = ({ name, size = 24, className, ...props }) => {
+            useEffect(() => {
+                lucide.createIcons(); // 每次渲染後重新繪製圖標
+            });
+            return <i data-lucide={name} width={size} height={size} className={className} {...props}></i>;
+        };
+
+        // 建立 Icon 對應元件，讓下方的程式碼不用改
+        const Calendar = (p) => <LucideIcon name="calendar" {...p} />;
+        const User = (p) => <LucideIcon name="user" {...p} />;
+        const ClipboardList = (p) => <LucideIcon name="clipboard-list" {...p} />;
+        const Home = (p) => <LucideIcon name="home" {...p} />;
+        const CheckCircle = (p) => <LucideIcon name="check-circle" {...p} />;
+        const Plus = (p) => <LucideIcon name="plus" {...p} />;
+        const ChevronRight = (p) => <LucideIcon name="chevron-right" {...p} />;
+        const ChevronLeft = (p) => <LucideIcon name="chevron-left" {...p} />;
+        const ArrowLeft = (p) => <LucideIcon name="arrow-left" {...p} />;
+        const Users = (p) => <LucideIcon name="users" {...p} />;
+        const Settings = (p) => <LucideIcon name="settings" {...p} />;
+        const LogOut = (p) => <LucideIcon name="log-out" {...p} />;
+        const XCircle = (p) => <LucideIcon name="x-circle" {...p} />;
+        const FileText = (p) => <LucideIcon name="file-text" {...p} />;
+
+        // --- 2. Mock Data (你的資料) ---
+        const INITIAL_STUDENTS = [
+            { id: 1, name: '我自己', dob: '1990-01-01', height: '175', size: 'L', phone: '0912345678' }
+        ];
+
+        const INITIAL_CLASSES = [
+            { id: 101, title: 'U8 基礎訓練', date: '2025-12-27', time: '10:00 - 11:30', price: 300, level: 'U8', location: 'A場地' },
+            { id: 102, title: 'U10 進階實戰', date: '2025-12-27', time: '14:00 - 16:00', price: 400, level: 'U10', location: 'B場地' },
+            { id: 103, title: 'U12 菁英培訓', date: '2025-12-28', time: '09:00 - 12:00', price: 500, level: 'U12', location: 'A場地' },
+            { id: 104, title: 'U8 趣味競賽', date: '2025-12-28', time: '13:00 - 15:00', price: 300, level: 'U8', location: 'C場地' },
+            { id: 105, title: 'U10 戰術分析', date: '2026-01-05', time: '19:00 - 20:30', price: 350, level: 'U10', location: '會議室' },
+        ];
+
+        const INITIAL_BOOKINGS = [
+            { id: 1001, classId: 101, studentId: 1, status: 'booked', timestamp: '2025-12-20T10:00:00Z' },
+            { id: 1003, classId: 103, studentId: 1, status: 'booked', timestamp: '2025-12-22T09:30:00Z' }
+        ];
+
+        const PACKAGES = [
+            { id: 'p1', title: 'U8 季票方案', price: 6000, sessions: 12, desc: '包含本季所有 U8 課程，自動排課' },
+            { id: 'p2', title: 'U10 季票方案', price: 7200, sessions: 12, desc: '包含本季所有 U10 課程，自動排課' },
+        ];
+
+        // --- 3. 通用組件 ---
+        const Card = ({ children, className = "" }) => (
+            <div className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden ${className}`}>
+                {children}
             </div>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
+        );
 
-  const renderParentPackages = () => (
-    <div className="space-y-4 pb-24">
-      <div className="bg-purple-600 p-6 text-white rounded-b-3xl mb-4 shadow-lg">
-        <h2 className="text-2xl font-bold">超值季票</h2>
-        <p className="opacity-90 mt-1">一次購買，整季暢玩</p>
-      </div>
-      
-      <div className="px-4 space-y-4">
-        {PACKAGES.map(pkg => (
-          <Card key={pkg.id} className="relative overflow-hidden">
-            <div className="absolute top-0 right-0 bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-1 rounded-bl-lg">
-              HOT
-            </div>
-            <div className="p-5">
-              <h3 className="text-xl font-bold text-gray-800 mb-2">{pkg.title}</h3>
-              <p className="text-gray-600 text-sm mb-4">{pkg.desc}</p>
-              <div className="flex items-baseline mb-4">
-                <span className="text-3xl font-bold text-purple-600">${pkg.price}</span>
-                <span className="text-gray-400 ml-2">/ {pkg.sessions} 堂</span>
-              </div>
-              <Button variant="primary" className="w-full bg-purple-600 hover:bg-purple-700 shadow-purple-200">
-                購買方案
-              </Button>
-            </div>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderParentSchedule = () => {
-    let myBookings = bookings.sort((a, b) => {
-      const dateA = new Date(getClassDate(a.classId) + ' ' + INITIAL_CLASSES.find(c => c.id === a.classId)?.time.split(' - ')[0]);
-      const dateB = new Date(getClassDate(b.classId) + ' ' + INITIAL_CLASSES.find(c => c.id === b.classId)?.time.split(' - ')[0]);
-      return dateA - dateB;
-    });
-
-    if (selectedDate) {
-      myBookings = myBookings.filter(b => getClassDate(b.classId) === selectedDate);
-    }
-
-    const calendarDays = getDaysInMonth(calendarDate);
-    const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
-
-    return (
-      <div className="space-y-4 pb-24">
-        <div className="bg-green-600 p-6 text-white rounded-b-3xl shadow-lg">
-          <h2 className="text-2xl font-bold">我的課表</h2>
-          <p className="opacity-90 mt-1">查看行事曆與課程安排</p>
-        </div>
-
-        {/* Calendar Widget */}
-        <div className="mx-4 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex justify-between items-center mb-4">
-            <button onClick={() => setCalendarDate(new Date(calendarDate.setMonth(calendarDate.getMonth() - 1)))} className="p-1 hover:bg-gray-100 rounded-full">
-              <ChevronLeft size={20} className="text-gray-600" />
-            </button>
-            <h3 className="font-bold text-gray-800">
-              {calendarDate.getFullYear()}年 {calendarDate.getMonth() + 1}月
-            </h3>
-            <button onClick={() => setCalendarDate(new Date(calendarDate.setMonth(calendarDate.getMonth() + 1)))} className="p-1 hover:bg-gray-100 rounded-full">
-              <ChevronRight size={20} className="text-gray-600" />
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-7 gap-1 text-center mb-2">
-            {weekDays.map(d => <div key={d} className="text-xs text-gray-400 font-medium">{d}</div>)}
-          </div>
-          
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((day, idx) => {
-              if (!day) return <div key={idx} />;
-              const dateStr = formatDate(day);
-              const isSelected = selectedDate === dateStr;
-              const hasClass = hasClassOnDate(dateStr);
-              const isToday = formatDate(new Date()) === dateStr;
-
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedDate(isSelected ? null : dateStr)}
-                  className={`
-                    h-9 w-9 mx-auto flex items-center justify-center rounded-full text-sm relative transition-all
-                    ${isSelected ? 'bg-green-600 text-white shadow-md' : 'hover:bg-gray-100 text-gray-700'}
-                    ${isToday && !isSelected ? 'border border-green-600 text-green-600 font-bold' : ''}
-                  `}
-                >
-                  {day.getDate()}
-                  {hasClass && (
-                    <span className={`absolute bottom-1 w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-green-500'}`} />
-                  )}
+        const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }) => {
+            const baseStyle = "px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 active:scale-95";
+            const variants = {
+                primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200",
+                secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200",
+                outline: "border border-blue-600 text-blue-600 hover:bg-blue-50",
+                danger: "bg-red-50 text-red-600 hover:bg-red-100",
+                success: "bg-green-500 text-white hover:bg-green-600 shadow-md shadow-green-200",
+                ghost: "bg-transparent text-gray-500 hover:bg-gray-100"
+            };
+            return (
+                <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed active:scale-100' : ''} ${className}`}>
+                    {children}
                 </button>
-              );
-            })}
-          </div>
-        </div>
+            );
+        };
 
-        <div className="px-4 flex justify-between items-center">
-          <h3 className="font-bold text-gray-700 border-l-4 border-green-500 pl-3">
-            {selectedDate ? `${selectedDate} 的課程` : '近期課程'}
-          </h3>
-          {selectedDate && (
-            <button onClick={() => setSelectedDate(null)} className="text-xs text-blue-600 hover:underline">
-              顯示全部
-            </button>
-          )}
-        </div>
+        const Badge = ({ children, color = 'blue' }) => {
+            const colors = {
+                blue: 'bg-blue-100 text-blue-700',
+                green: 'bg-green-100 text-green-700',
+                gray: 'bg-gray-100 text-gray-700',
+                orange: 'bg-orange-100 text-orange-700'
+            };
+            return (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[color] || colors.blue}`}>
+                    {children}
+                </span>
+            );
+        };
 
-        <div className="px-4 space-y-3">
-          {myBookings.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
-              <p>{selectedDate ? '這天沒有課程' : '無預約課程'}</p>
-            </div>
-          ) : (
-            myBookings.map(booking => {
-              const cls = INITIAL_CLASSES.find(c => c.id === booking.classId);
-              if (!cls) return null;
-              return (
-                <Card key={booking.id} className="border-l-4 border-l-green-500">
-                  <div className="p-4 flex justify-between items-center">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge color={booking.status === 'checked-in' ? 'green' : 'gray'}>
-                          {booking.status === 'checked-in' ? '已報到' : '已預約'}
-                        </Badge>
-                      </div>
-                      <h3 className="font-bold text-gray-800">{cls.title}</h3>
-                      <p className="text-sm text-gray-500">{cls.date} {cls.time}</p>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const renderMyZone = () => {
-    // Show all bookings as a list history
-    const myBookings = [...bookings].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    const me = students[0];
-
-    return (
-      <div className="space-y-4 pb-24">
-        <div className="bg-gray-800 p-6 text-white rounded-b-3xl shadow-lg">
-          <div className="flex items-center gap-4">
-             <div className="w-16 h-16 bg-gray-600 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white">
-                {me.name[0]}
-             </div>
-             <div>
-                <h2 className="text-2xl font-bold">{me.name}</h2>
-                <p className="opacity-70 text-sm">{me.phone}</p>
-             </div>
-          </div>
-        </div>
-
-        <div className="px-4 mt-2">
-            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                <FileText size={20} className="text-gray-600"/> 已報名課程紀錄
-            </h3>
+        // --- 4. 主程式 App ---
+        function App() {
+            const [currentView, setCurrentView] = useState('parent');
+            const [activeTab, setActiveTab] = useState('single');
             
-            <div className="space-y-3">
-            {myBookings.length === 0 ? (
-                <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-gray-100">
-                    <p>尚無報名紀錄</p>
-                </div>
-            ) : (
-                myBookings.map(booking => {
-                    const cls = INITIAL_CLASSES.find(c => c.id === booking.classId);
-                    if (!cls) return null;
-                    return (
-                    <Card key={booking.id} className="flex flex-col">
-                        <div className="p-4">
-                            <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-bold text-gray-800">{cls.title}</h4>
-                                <Badge color={booking.status === 'checked-in' ? 'green' : 'gray'}>
-                                    {booking.status === 'checked-in' ? '已完成' : '待上課'}
-                                </Badge>
-                            </div>
-                            <div className="text-sm text-gray-500 space-y-1">
-                                <p>日期：{cls.date}</p>
-                                <p>時間：{cls.time}</p>
-                                <p>地點：{cls.location}</p>
-                                <p>費用：${cls.price}</p>
-                            </div>
-                        </div>
-                    </Card>
-                    );
-                })
-            )}
-            </div>
-        </div>
-      </div>
-    );
-  };
+            // Data State
+            const [students, setStudents] = useState(INITIAL_STUDENTS);
+            const [bookings, setBookings] = useState(INITIAL_BOOKINGS); 
+            const [showModal, setShowModal] = useState(false);
+            const [selectedClass, setSelectedClass] = useState(null);
+            const [toast, setToast] = useState(null);
+            
+            // LIFF State
+            const [liffProfile, setLiffProfile] = useState(null);
 
-  const renderCoachDashboard = () => {
-    // ... Coach dashboard logic remains the same ...
-    if (coachSelectedClassId) {
-      const cls = INITIAL_CLASSES.find(c => c.id === coachSelectedClassId);
-      const classBookings = bookings.filter(b => b.classId === coachSelectedClassId);
+            // Calendar State
+            const [calendarDate, setCalendarDate] = useState(new Date(2025, 11, 1)); 
+            const [selectedDate, setSelectedDate] = useState(null);
 
-      return (
-        <div className="pb-20">
-          <div className="bg-gray-800 p-4 text-white flex items-center gap-3 sticky top-0 z-10 shadow-md">
-            <button onClick={() => setCoachSelectedClassId(null)}>
-              <ArrowLeft />
-            </button>
-            <div>
-              <h2 className="font-bold text-lg">{cls?.title}</h2>
-              <p className="text-xs text-gray-400">{cls?.date} {cls?.time}</p>
-            </div>
-          </div>
+            // Coach View State
+            const [coachSelectedClassId, setCoachSelectedClassId] = useState(null);
 
-          <div className="p-4">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-gray-600 font-medium">已報名: {classBookings.length} 人</span>
-              <span className="text-gray-600 font-medium">實到: {classBookings.filter(b => b.status === 'checked-in').length} 人</span>
-            </div>
+            // ★★★ LIFF 初始化邏輯 ★★★
+            useEffect(() => {
+                if (LIFF_ID && LIFF_ID !== "你的_LIFF_ID_填在這裡") {
+                    liff.init({ liffId: LIFF_ID })
+                        .then(() => {
+                            if (!liff.isLoggedIn()) {
+                                liff.login();
+                            } else {
+                                liff.getProfile().then(profile => {
+                                    setLiffProfile(profile);
+                                    // 將 LIFF 使用者名稱同步到學生資料
+                                    setStudents(prev => [{ ...prev[0], name: profile.displayName }]);
+                                });
+                            }
+                        })
+                        .catch(err => console.error("LIFF Init Error:", err));
+                }
+            }, []);
 
-            <div className="space-y-3">
-              {classBookings.length === 0 ? (
-                 <div className="text-center py-10 text-gray-400 border-2 border-dashed rounded-xl">
-                   無人報名
-                 </div>
-              ) : (
-                classBookings.map(booking => {
-                  const student = students.find(s => s.id === booking.studentId);
-                  const isCheckedIn = booking.status === 'checked-in';
-                  return (
-                    <Card key={booking.id} className={`${isCheckedIn ? 'bg-green-50 border-green-200' : ''}`}>
-                      <div className="p-4 flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${isCheckedIn ? 'bg-green-500' : 'bg-gray-400'}`}>
-                            {student?.name[0]}
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-gray-800">{student?.name}</h4>
-                            <p className="text-xs text-gray-500">{student?.phone}</p>
-                          </div>
-                        </div>
-                        
-                        <Button 
-                            variant={isCheckedIn ? 'success' : 'primary'} 
-                            className={`py-1 px-3 text-sm ${isCheckedIn ? 'bg-green-100 text-green-700 hover:bg-green-200 shadow-none border border-green-300' : 'bg-gray-800 hover:bg-gray-900'}`}
-                            onClick={() => handleToggleCheckIn(booking.id)}
-                          >
-                            {isCheckedIn ? (
-                              <>
-                                <CheckCircle size={16} className="mr-1" /> 已報到
-                              </>
-                            ) : '報到'}
-                          </Button>
-                      </div>
-                    </Card>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
+            // Toast Helper
+            const showToast = (message, type = 'success') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 3000);
+            };
 
-    return (
-      <div className="pb-20">
-        <div className="bg-gray-800 p-6 text-white rounded-b-3xl mb-4 shadow-lg">
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Settings className="animate-spin-slow" /> 教練後台
-          </h2>
-          <p className="opacity-70 mt-1">今日課程與點名管理</p>
-        </div>
+            // Actions & Helpers
+            const handleBookClick = (cls) => {
+                setSelectedClass(cls);
+                if (students.length > 0) setShowModal(true);
+                else showToast('系統錯誤：無使用者資料', 'error');
+            };
 
-        <div className="px-4 space-y-4">
-          <h3 className="font-bold text-gray-700 border-l-4 border-gray-800 pl-3">近期課程</h3>
-          {INITIAL_CLASSES.map(cls => {
-             const count = bookings.filter(b => b.classId === cls.id).length;
-             return (
-              <Card key={cls.id}>
-                <div 
-                  className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors"
-                  onClick={() => setCoachSelectedClassId(cls.id)}
-                >
-                  <div>
-                    <div className="flex gap-2 mb-1">
-                      <Badge color="gray">{cls.level}</Badge>
-                      <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{count} 人報名</span>
+            const confirmBooking = () => {
+                const studentId = students[0].id;
+                const alreadyBooked = bookings.some(b => b.classId === selectedClass.id && b.studentId === studentId);
+                
+                if (alreadyBooked) {
+                    showToast('您已報名此課程', 'error');
+                    setShowModal(false);
+                    return;
+                }
+
+                const newBooking = {
+                    id: Date.now(),
+                    classId: selectedClass.id,
+                    studentId: studentId,
+                    status: 'booked', 
+                    timestamp: new Date().toISOString()
+                };
+
+                setBookings([...bookings, newBooking]);
+                setShowModal(false);
+                
+                // 發送 LINE 訊息
+                if (liff.isInClient()) {
+                    liff.sendMessages([{ type: 'text', text: `【預約成功】\n課程：${selectedClass.title}\n時間：${selectedClass.date} ${selectedClass.time}` }])
+                        .catch(err => console.error("Message Error", err));
+                }
+                
+                showToast('報名成功！請至「我的課表」查看');
+            };
+
+            const handleToggleCheckIn = (bookingId) => {
+                let message = '';
+                setBookings(bookings.map(b => {
+                    if (b.id === bookingId) {
+                        const isCheckingIn = b.status === 'booked';
+                        message = isCheckingIn ? '報到成功' : '已取消報到';
+                        return { ...b, status: isCheckingIn ? 'checked-in' : 'booked' };
+                    }
+                    return b;
+                }));
+                showToast(message, 'success');
+            };
+
+            // Helpers for rendering
+            const getClassName = (id) => INITIAL_CLASSES.find(c => c.id === id)?.title || '未知課程';
+            const getClassDate = (id) => INITIAL_CLASSES.find(c => c.id === id)?.date || '';
+            
+            const getDaysInMonth = (date) => {
+                const year = date.getFullYear();
+                const month = date.getMonth();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const firstDayOfWeek = new Date(year, month, 1).getDay(); 
+                const days = [];
+                for (let i = 0; i < firstDayOfWeek; i++) days.push(null);
+                for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
+                return days;
+            };
+
+            const formatDate = (date) => {
+                if (!date) return '';
+                const y = date.getFullYear();
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            };
+            
+            const hasClassOnDate = (dateStr) => bookings.some(b => getClassDate(b.classId) === dateStr);
+
+            // --- Render Components ---
+            
+            const renderParentSingleClass = () => (
+                <div className="space-y-4 pb-24">
+                    <div className="bg-blue-600 p-6 text-white rounded-b-3xl mb-4 shadow-lg">
+                        <h2 className="text-2xl font-bold">單堂報名</h2>
+                        <p className="opacity-90 mt-1">你好，{liffProfile ? liffProfile.displayName : '訪客'}</p>
                     </div>
-                    <h3 className="font-bold text-gray-800 text-lg">{cls.title}</h3>
-                    <p className="text-sm text-gray-500 mt-1">{cls.date} • {cls.time}</p>
-                  </div>
-                  <ChevronRight className="text-gray-400" />
+                    <div className="px-4 space-y-4">
+                        {INITIAL_CLASSES.map(cls => (
+                            <Card key={cls.id} className="flex flex-col">
+                                <div className="p-4">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <Badge color="blue">{cls.level}</Badge>
+                                        <span className="font-bold text-blue-600">${cls.price}</span>
+                                    </div>
+                                    <h3 className="text-lg font-bold text-gray-800 mb-1">{cls.title}</h3>
+                                    <div className="flex items-center text-gray-500 text-sm mb-1">
+                                        <Calendar size={14} className="mr-1" /> {cls.date}
+                                    </div>
+                                    <div className="flex items-center text-gray-500 text-sm mb-3">
+                                        <ClipboardList size={14} className="mr-1" /> {cls.time} • {cls.location}
+                                    </div>
+                                    <Button onClick={() => handleBookClick(cls)} className="w-full">立即報名</Button>
+                                </div>
+                            </Card>
+                        ))}
+                    </div>
                 </div>
-              </Card>
-             );
-          })}
-        </div>
-      </div>
-    );
-  };
+            );
 
-  // --- Main Layout ---
-
-  return (
-    <div className="min-h-screen bg-gray-50 font-sans flex justify-center">
-      {/* Mobile Container Sim */}
-      <div className="w-full max-w-md bg-white shadow-2xl min-h-screen relative flex flex-col">
-        
-        {/* Toggle Role Button (Demo Purpose) */}
-        <div className="absolute top-4 right-4 z-50">
-          <button 
-            onClick={() => {
-              setCurrentView(currentView === 'parent' ? 'coach' : 'parent');
-              setCoachSelectedClassId(null);
-            }}
-            className="bg-black/80 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-md shadow-lg flex items-center gap-1 hover:bg-black transition"
-          >
-            {currentView === 'parent' ? <Users size={12}/> : <LogOut size={12} />}
-            {currentView === 'parent' ? '切換至教練' : '切換至家長'}
-          </button>
-        </div>
-
-        {/* View Content */}
-        <div className="flex-1 overflow-y-auto scrollbar-hide">
-          {currentView === 'parent' && (
-            <>
-              {activeTab === 'single' && renderParentSingleClass()}
-              {activeTab === 'package' && renderParentPackages()}
-              {activeTab === 'schedule' && renderParentSchedule()}
-              {activeTab === 'profile' && renderMyZone()}
-            </>
-          )}
-          {currentView === 'coach' && renderCoachDashboard()}
-        </div>
-
-        {/* Bottom Navigation (Only for Parent) */}
-        {currentView === 'parent' && (
-          <div className="bg-white border-t border-gray-100 px-2 py-2 flex justify-between items-center fixed bottom-0 w-full max-w-md pb-safe">
-            <button onClick={() => setActiveTab('single')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'single' ? 'text-blue-600' : 'text-gray-400'}`}>
-              <Home size={24} strokeWidth={activeTab === 'single' ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">單堂報名</span>
-            </button>
-            <button onClick={() => setActiveTab('package')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'package' ? 'text-purple-600' : 'text-gray-400'}`}>
-              <ClipboardList size={24} strokeWidth={activeTab === 'package' ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">包堂報名</span>
-            </button>
-            <button onClick={() => setActiveTab('schedule')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'schedule' ? 'text-green-600' : 'text-gray-400'}`}>
-              <Calendar size={24} strokeWidth={activeTab === 'schedule' ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">我的課表</span>
-            </button>
-            <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'profile' ? 'text-gray-800' : 'text-gray-400'}`}>
-              <User size={24} strokeWidth={activeTab === 'profile' ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">個人專區</span>
-            </button>
-          </div>
-        )}
-
-        {/* Modals & Toasts */}
-        
-        {/* Booking Modal */}
-        {showModal && selectedClass && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
-            <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 fade-in duration-300">
-              <h3 className="text-xl font-bold mb-4 text-gray-800">確認報名</h3>
-              
-              <div className="bg-blue-50 p-4 rounded-xl mb-6">
-                <h4 className="font-bold text-blue-800 mb-1">{selectedClass.title}</h4>
-                <p className="text-blue-600 text-sm">{selectedClass.date} • {selectedClass.time}</p>
-                <div className="mt-2 pt-2 border-t border-blue-100 flex justify-between items-center">
-                  <span className="text-sm text-blue-500">費用</span>
-                  <span className="font-bold text-lg text-blue-700">${selectedClass.price}</span>
+            // ... (省略部分重複的 Render 函數，如 renderParentPackages, renderParentSchedule 以節省長度，邏輯同上)
+            // 為了完整性，這裡我將 renderParentPackages 和其他 view 完整放入
+            
+            const renderParentPackages = () => (
+                <div className="space-y-4 pb-24">
+                    <div className="bg-purple-600 p-6 text-white rounded-b-3xl mb-4 shadow-lg">
+                        <h2 className="text-2xl font-bold">超值季票</h2>
+                        <p className="opacity-90 mt-1">一次購買，整季暢玩</p>
+                    </div>
+                    <div className="px-4 space-y-4">
+                        {PACKAGES.map(pkg => (
+                            <Card key={pkg.id} className="relative overflow-hidden">
+                                <div className="absolute top-0 right-0 bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-1 rounded-bl-lg">HOT</div>
+                                <div className="p-5">
+                                    <h3 className="text-xl font-bold text-gray-800 mb-2">{pkg.title}</h3>
+                                    <p className="text-gray-600 text-sm mb-4">{pkg.desc}</p>
+                                    <div className="flex items-baseline mb-4">
+                                        <span className="text-3xl font-bold text-purple-600">${pkg.price}</span>
+                                        <span className="text-gray-400 ml-2">/ {pkg.sessions} 堂</span>
+                                    </div>
+                                    <Button variant="primary" className="w-full bg-purple-600 hover:bg-purple-700 shadow-purple-200">購買方案</Button>
+                                </div>
+                            </Card>
+                        ))}
+                    </div>
                 </div>
-              </div>
+            );
 
-              <div className="mb-6 text-sm text-gray-500 text-center">
-                即將為您自己報名此課程
-              </div>
+            const renderParentSchedule = () => {
+                let myBookings = bookings.sort((a, b) => new Date(getClassDate(a.classId)) - new Date(getClassDate(b.classId)));
+                if (selectedDate) myBookings = myBookings.filter(b => getClassDate(b.classId) === selectedDate);
+                const calendarDays = getDaysInMonth(calendarDate);
+                const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 
-              <div className="flex gap-3">
-                <Button variant="secondary" className="flex-1" onClick={() => setShowModal(false)}>取消</Button>
-                <Button variant="primary" className="flex-1" onClick={confirmBooking} disabled={students.length === 0}>
-                  確認付款
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+                return (
+                    <div className="space-y-4 pb-24">
+                        <div className="bg-green-600 p-6 text-white rounded-b-3xl shadow-lg">
+                            <h2 className="text-2xl font-bold">我的課表</h2>
+                            <p className="opacity-90 mt-1">查看行事曆與課程安排</p>
+                        </div>
+                        <div className="mx-4 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                            <div className="flex justify-between items-center mb-4">
+                                <button onClick={() => setCalendarDate(new Date(calendarDate.setMonth(calendarDate.getMonth() - 1)))} className="p-1 hover:bg-gray-100 rounded-full"><ChevronLeft size={20} className="text-gray-600" /></button>
+                                <h3 className="font-bold text-gray-800">{calendarDate.getFullYear()}年 {calendarDate.getMonth() + 1}月</h3>
+                                <button onClick={() => setCalendarDate(new Date(calendarDate.setMonth(calendarDate.getMonth() + 1)))} className="p-1 hover:bg-gray-100 rounded-full"><ChevronRight size={20} className="text-gray-600" /></button>
+                            </div>
+                            <div className="grid grid-cols-7 gap-1 text-center mb-2">{weekDays.map(d => <div key={d} className="text-xs text-gray-400 font-medium">{d}</div>)}</div>
+                            <div className="grid grid-cols-7 gap-1">
+                                {calendarDays.map((day, idx) => {
+                                    if (!day) return <div key={idx} />;
+                                    const dateStr = formatDate(day);
+                                    const isSelected = selectedDate === dateStr;
+                                    const hasClass = hasClassOnDate(dateStr);
+                                    const isToday = formatDate(new Date()) === dateStr;
+                                    return (
+                                        <button key={idx} onClick={() => setSelectedDate(isSelected ? null : dateStr)} className={`h-9 w-9 mx-auto flex items-center justify-center rounded-full text-sm relative transition-all ${isSelected ? 'bg-green-600 text-white shadow-md' : 'hover:bg-gray-100 text-gray-700'} ${isToday && !isSelected ? 'border border-green-600 text-green-600 font-bold' : ''}`}>
+                                            {day.getDate()}
+                                            {hasClass && <span className={`absolute bottom-1 w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-green-500'}`} />}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div className="px-4 flex justify-between items-center">
+                            <h3 className="font-bold text-gray-700 border-l-4 border-green-500 pl-3">{selectedDate ? `${selectedDate} 的課程` : '近期課程'}</h3>
+                            {selectedDate && <button onClick={() => setSelectedDate(null)} className="text-xs text-blue-600 hover:underline">顯示全部</button>}
+                        </div>
+                        <div className="px-4 space-y-3">
+                            {myBookings.length === 0 ? (
+                                <div className="text-center py-8 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200"><p>{selectedDate ? '這天沒有課程' : '無預約課程'}</p></div>
+                            ) : (
+                                myBookings.map(booking => {
+                                    const cls = INITIAL_CLASSES.find(c => c.id === booking.classId);
+                                    if (!cls) return null;
+                                    return (
+                                        <Card key={booking.id} className="border-l-4 border-l-green-500">
+                                            <div className="p-4 flex justify-between items-center">
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1"><Badge color={booking.status === 'checked-in' ? 'green' : 'gray'}>{booking.status === 'checked-in' ? '已報到' : '已預約'}</Badge></div>
+                                                    <h3 className="font-bold text-gray-800">{cls.title}</h3>
+                                                    <p className="text-sm text-gray-500">{cls.date} {cls.time}</p>
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                );
+            };
 
-        {/* Toast Notification */}
-        {toast && (
-          <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-full shadow-xl text-white text-sm font-medium animate-in fade-in slide-in-from-top-5 duration-300 flex items-center gap-2 ${toast.type === 'error' ? 'bg-red-500' : 'bg-gray-800'}`}>
-            {toast.type === 'success' && <CheckCircle size={16} />}
-            {toast.message}
-          </div>
-        )}
+            const renderMyZone = () => {
+                const myBookings = [...bookings].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                const me = students[0];
+                return (
+                    <div className="space-y-4 pb-24">
+                        <div className="bg-gray-800 p-6 text-white rounded-b-3xl shadow-lg">
+                            <div className="flex items-center gap-4">
+                                <div className="w-16 h-16 bg-gray-600 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white">
+                                    {liffProfile && liffProfile.pictureUrl ? <img src={liffProfile.pictureUrl} className="w-full h-full rounded-full" /> : me.name[0]}
+                                </div>
+                                <div><h2 className="text-2xl font-bold">{me.name}</h2><p className="opacity-70 text-sm">{me.phone}</p></div>
+                            </div>
+                        </div>
+                        <div className="px-4 mt-2">
+                            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2"><FileText size={20} className="text-gray-600"/> 已報名課程紀錄</h3>
+                            <div className="space-y-3">
+                                {myBookings.length === 0 ? <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-gray-100"><p>尚無報名紀錄</p></div> : myBookings.map(booking => {
+                                    const cls = INITIAL_CLASSES.find(c => c.id === booking.classId);
+                                    if (!cls) return null;
+                                    return (
+                                        <Card key={booking.id} className="flex flex-col">
+                                            <div className="p-4">
+                                                <div className="flex justify-between items-start mb-2"><h4 className="font-bold text-gray-800">{cls.title}</h4><Badge color={booking.status === 'checked-in' ? 'green' : 'gray'}>{booking.status === 'checked-in' ? '已完成' : '待上課'}</Badge></div>
+                                                <div className="text-sm text-gray-500 space-y-1"><p>日期：{cls.date}</p><p>時間：{cls.time}</p><p>地點：{cls.location}</p><p>費用：${cls.price}</p></div>
+                                            </div>
+                                        </Card>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
 
-      </div>
-    </div>
-  );
-}
+            const renderCoachDashboard = () => {
+                if (coachSelectedClassId) {
+                    const cls = INITIAL_CLASSES.find(c => c.id === coachSelectedClassId);
+                    const classBookings = bookings.filter(b => b.classId === coachSelectedClassId);
+                    return (
+                        <div className="pb-20">
+                            <div className="bg-gray-800 p-4 text-white flex items-center gap-3 sticky top-0 z-10 shadow-md">
+                                <button onClick={() => setCoachSelectedClassId(null)}><ArrowLeft /></button>
+                                <div><h2 className="font-bold text-lg">{cls?.title}</h2><p className="text-xs text-gray-400">{cls?.date} {cls?.time}</p></div>
+                            </div>
+                            <div className="p-4">
+                                <div className="flex justify-between items-center mb-4"><span className="text-gray-600 font-medium">已報名: {classBookings.length} 人</span><span className="text-gray-600 font-medium">實到: {classBookings.filter(b => b.status === 'checked-in').length} 人</span></div>
+                                <div className="space-y-3">
+                                    {classBookings.length === 0 ? <div className="text-center py-10 text-gray-400 border-2 border-dashed rounded-xl">無人報名</div> : classBookings.map(booking => {
+                                        const student = students.find(s => s.id === booking.studentId);
+                                        const isCheckedIn = booking.status === 'checked-in';
+                                        return (
+                                            <Card key={booking.id} className={`${isCheckedIn ? 'bg-green-50 border-green-200' : ''}`}>
+                                                <div className="p-4 flex justify-between items-center">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${isCheckedIn ? 'bg-green-500' : 'bg-gray-400'}`}>{student?.name[0]}</div>
+                                                        <div><h4 className="font-bold text-gray-800">{student?.name}</h4><p className="text-xs text-gray-500">{student?.phone}</p></div>
+                                                    </div>
+                                                    <Button variant={isCheckedIn ? 'success' : 'primary'} className={`py-1 px-3 text-sm ${isCheckedIn ? 'bg-green-100 text-green-700 hover:bg-green-200 shadow-none border border-green-300' : 'bg-gray-800 hover:bg-gray-900'}`} onClick={() => handleToggleCheckIn(booking.id)}>{isCheckedIn ? <><CheckCircle size={16} className="mr-1" /> 已報到</> : '報到'}</Button>
+                                                </div>
+                                            </Card>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="pb-20">
+                        <div className="bg-gray-800 p-6 text-white rounded-b-3xl mb-4 shadow-lg">
+                            <h2 className="text-2xl font-bold flex items-center gap-2"><Settings className="animate-spin-slow" /> 教練後台</h2>
+                            <p className="opacity-70 mt-1">今日課程與點名管理</p>
+                        </div>
+                        <div className="px-4 space-y-4">
+                            <h3 className="font-bold text-gray-700 border-l-4 border-gray-800 pl-3">近期課程</h3>
+                            {INITIAL_CLASSES.map(cls => {
+                                const count = bookings.filter(b => b.classId === cls.id).length;
+                                return (
+                                    <Card key={cls.id}>
+                                        <div className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setCoachSelectedClassId(cls.id)}>
+                                            <div>
+                                                <div className="flex gap-2 mb-1"><Badge color="gray">{cls.level}</Badge><span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{count} 人報名</span></div>
+                                                <h3 className="font-bold text-gray-800 text-lg">{cls.title}</h3>
+                                                <p className="text-sm text-gray-500 mt-1">{cls.date} • {cls.time}</p>
+                                            </div>
+                                            <ChevronRight className="text-gray-400" />
+                                        </div>
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            };
+
+            // Main Layout
+            return (
+                <div className="min-h-screen bg-gray-50 font-sans flex justify-center">
+                    <div className="w-full max-w-md bg-white shadow-2xl min-h-screen relative flex flex-col">
+                        {/* Toggle Role Button */}
+                        <div className="absolute top-4 right-4 z-50">
+                            <button onClick={() => { setCurrentView(currentView === 'parent' ? 'coach' : 'parent'); setCoachSelectedClassId(null); }} className="bg-black/80 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-md shadow-lg flex items-center gap-1 hover:bg-black transition">
+                                {currentView === 'parent' ? <Users size={12}/> : <LogOut size={12} />}
+                                {currentView === 'parent' ? '切換至教練' : '切換至家長'}
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto scrollbar-hide">
+                            {currentView === 'parent' && (
+                                <>
+                                    {activeTab === 'single' && renderParentSingleClass()}
+                                    {activeTab === 'package' && renderParentPackages()}
+                                    {activeTab === 'schedule' && renderParentSchedule()}
+                                    {activeTab === 'profile' && renderMyZone()}
+                                </>
+                            )}
+                            {currentView === 'coach' && renderCoachDashboard()}
+                        </div>
+
+                        {/* Bottom Navigation */}
+                        {currentView === 'parent' && (
+                            <div className="bg-white border-t border-gray-100 px-2 py-2 flex justify-between items-center fixed bottom-0 w-full max-w-md pb-safe">
+                                <button onClick={() => setActiveTab('single')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'single' ? 'text-blue-600' : 'text-gray-400'}`}><Home size={24} strokeWidth={activeTab === 'single' ? 2.5 : 2} /><span className="text-[10px] font-medium">單堂報名</span></button>
+                                <button onClick={() => setActiveTab('package')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'package' ? 'text-purple-600' : 'text-gray-400'}`}><ClipboardList size={24} strokeWidth={activeTab === 'package' ? 2.5 : 2} /><span className="text-[10px] font-medium">包堂報名</span></button>
+                                <button onClick={() => setActiveTab('schedule')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'schedule' ? 'text-green-600' : 'text-gray-400'}`}><Calendar size={24} strokeWidth={activeTab === 'schedule' ? 2.5 : 2} /><span className="text-[10px] font-medium">我的課表</span></button>
+                                <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'profile' ? 'text-gray-800' : 'text-gray-400'}`}><User size={24} strokeWidth={activeTab === 'profile' ? 2.5 : 2} /><span className="text-[10px] font-medium">個人專區</span></button>
+                            </div>
+                        )}
+
+                        {/* Modals & Toasts */}
+                        {showModal && selectedClass && (
+                            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
+                                <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in">
+                                    <h3 className="text-xl font-bold mb-4 text-gray-800">確認報名</h3>
+                                    <div className="bg-blue-50 p-4 rounded-xl mb-6">
+                                        <h4 className="font-bold text-blue-800 mb-1">{selectedClass.title}</h4>
+                                        <p className="text-blue-600 text-sm">{selectedClass.date} • {selectedClass.time}</p>
+                                        <div className="mt-2 pt-2 border-t border-blue-100 flex justify-between items-center"><span className="text-sm text-blue-500">費用</span><span className="font-bold text-lg text-blue-700">${selectedClass.price}</span></div>
+                                    </div>
+                                    <div className="flex gap-3"><Button variant="secondary" className="flex-1" onClick={() => setShowModal(false)}>取消</Button><Button variant="primary" className="flex-1" onClick={confirmBooking} disabled={students.length === 0}>確認付款</Button></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {toast && (
+                            <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-full shadow-xl text-white text-sm font-medium flex items-center gap-2 ${toast.type === 'error' ? 'bg-red-500' : 'bg-gray-800'}`}>
+                                {toast.type === 'success' && <CheckCircle size={16} />}
+                                {toast.message}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
