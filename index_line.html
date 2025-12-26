@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的預約系統</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+        /* 簡單的 CSS Reset 與樣式，模仿 App 質感 */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; background: white; min-height: 100vh; display: flex; flex-direction: column; }
+        
+        /* 頭部與進度條 */
+        header { padding: 20px; text-align: center; border-bottom: 1px solid #eee; }
+        .profile-box { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 15px; font-size: 0.9rem; color: #666; }
+        .avatar { width: 30px; height: 30px; border-radius: 50%; background: #ddd; }
+        
+        /* 內容區塊 */
+        .step-content { flex: 1; padding: 20px; display: none; /* 預設隱藏所有步驟 */ }
+        .step-content.active { display: block; animation: fadeIn 0.3s; }
+        
+        /* 按鈕與列表樣式 */
+        .list-btn { width: 100%; padding: 15px; margin-bottom: 10px; border: 1px solid #ddd; background: white; border-radius: 8px; text-align: left; font-size: 16px; cursor: pointer; transition: 0.2s; display: flex; justify-content: space-between; }
+        .list-btn:active { background-color: #f0f0f0; transform: scale(0.98); }
+        .list-btn span { color: #888; font-size: 14px; }
+        
+        .action-btn { width: 100%; padding: 15px; background-color: #06c755; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        .action-btn.secondary { background-color: #eee; color: #333; margin-top: 10px; }
+        
+        /* 時間選擇格 */
+        .time-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
+        .time-btn { padding: 10px; border: 1px solid #ddd; background: white; border-radius: 5px; cursor: pointer; }
+        .time-btn.selected { background-color: #06c755; color: white; border-color: #06c755; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .summary-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px dashed #eee; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div id="profile" class="profile-box">Loading...</div>
+        <h3 id="step-title">1. 選擇分店</h3>
+    </header>
+
+    <div id="step1" class="step-content active">
+        <button class="list-btn" onclick="nextStep(1, '台北旗艦店')">台北旗艦店 <span>2.5km</span></button>
+        <button class="list-btn" onclick="nextStep(1, '台中逢甲店')">台中逢甲店 <span>120km</span></button>
+        <button class="list-btn" onclick="nextStep(1, '高雄巨蛋店')">高雄巨蛋店 <span>300km</span></button>
+    </div>
+
+    <div id="step2" class="step-content">
+        <button class="list-btn" onclick="nextStep(2, '剪髮設計')">剪髮設計 <span>$800</span></button>
+        <button class="list-btn" onclick="nextStep(2, '染髮護理')">染髮護理 <span>$2500</span></button>
+        <button class="list-btn" onclick="nextStep(2, '頭皮SPA')">頭皮SPA <span>$1200</span></button>
+        <button class="action-btn secondary" onclick="prevStep(2)">回上一步</button>
+    </div>
+
+    <div id="step3" class="step-content">
+        <p>選擇日期：<input type="date" id="date-picker" style="padding:5px; font-size:16px;"></p>
+        <div class="time-grid" id="time-container">
+            </div>
+        <button class="action-btn secondary" onclick="prevStep(3)">回上一步</button>
+    </div>
+
+    <div id="step4" class="step-content">
+        <div class="summary-item"><span>分店</span><strong id="sum-store">--</strong></div>
+        <div class="summary-item"><span>服務</span><strong id="sum-service">--</strong></div>
+        <div class="summary-item"><span>日期</span><strong id="sum-date">--</strong></div>
+        <div class="summary-item"><span>時間</span><strong id="sum-time">--</strong></div>
+        
+        <button class="action-btn" onclick="submitBooking()">確認預約</button>
+        <button class="action-btn secondary" onclick="prevStep(4)">修改資訊</button>
+    </div>
+</div>
+
+<script>
+    // ----------- 設定區域 -----------
+    const LIFF_ID = "2007513150-YKCwzhVx"; 
+    // ------------------------------
+
+    const bookingData = { store: '', service: '', date: '', time: '' };
+    let userProfile = null;
+
+    // 1. 初始化 LIFF
+    window.onload = function() {
+        // 為了方便測試，如果沒有 LIFF ID，先跑網頁邏輯
+        if(LIFF_ID === "你的_LIFF_ID_填在這裡") {
+            alert("請記得在程式碼中填入你的 LIFF ID！目前僅為網頁預覽模式。");
+            document.getElementById('profile').innerText = "預覽模式 (未串接)";
+            initTimeSlots(); // 產生時間按鈕
+            return;
+        }
+
+        liff.init({ liffId: LIFF_ID })
+            .then(() => {
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                } else {
+                    liff.getProfile().then(profile => {
+                        userProfile = profile;
+                        document.getElementById('profile').innerHTML = 
+                            `<img src="${profile.pictureUrl}" class="avatar"> ${profile.displayName}`;
+                    });
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('profile').innerText = "LIFF 初始化失敗";
+            });
+            
+        initTimeSlots(); // 產生時間按鈕
+    };
+
+    // 2. 頁面切換邏輯 (SPA核心)
+    function showSection(id) {
+        document.querySelectorAll('.step-content').forEach(el => el.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+
+    function nextStep(currentStep, value) {
+        if (currentStep === 1) {
+            bookingData.store = value;
+            document.getElementById('step-title').innerText = "2. 選擇服務";
+            showSection('step2');
+        } else if (currentStep === 2) {
+            bookingData.service = value;
+            document.getElementById('step-title').innerText = "3. 選擇時間";
+            showSection('step3');
+        } else if (currentStep === 3) {
+            // 時間選擇在 selectTime 觸發
+        }
+    }
+
+    function prevStep(currentStep) {
+        if (currentStep === 2) {
+            document.getElementById('step-title').innerText = "1. 選擇分店";
+            showSection('step1');
+        } else if (currentStep === 3) {
+            document.getElementById('step-title').innerText = "2. 選擇服務";
+            showSection('step2');
+        } else if (currentStep === 4) {
+            document.getElementById('step-title').innerText = "3. 選擇時間";
+            showSection('step3');
+        }
+    }
+
+    // 3. 時間選擇邏輯
+    function initTimeSlots() {
+        const times = ['10:00', '11:00', '13:00', '14:00', '15:30', '18:00'];
+        const container = document.getElementById('time-container');
+        let html = '';
+        times.forEach(t => {
+            html += `<div class="time-btn" onclick="selectTime('${t}', this)">${t}</div>`;
+        });
+        container.innerHTML = html;
+        
+        // 預設今天日期
+        document.getElementById('date-picker').valueAsDate = new Date();
+    }
+
+    function selectTime(time, btnElement) {
+        // UI 變色
+        document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
+        btnElement.classList.add('selected');
+        
+        // 紀錄資料
+        bookingData.time = time;
+        bookingData.date = document.getElementById('date-picker').value;
+        
+        // 更新確認頁面資料
+        document.getElementById('sum-store').innerText = bookingData.store;
+        document.getElementById('sum-service').innerText = bookingData.service;
+        document.getElementById('sum-date').innerText = bookingData.date;
+        document.getElementById('sum-time').innerText = bookingData.time;
+        
+        // 跳轉到確認頁
+        setTimeout(() => {
+            document.getElementById('step-title').innerText = "4. 確認資料";
+            showSection('step4');
+        }, 300);
+    }
+
+    // 4. 提交預約
+    function submitBooking() {
+        const msg = `【預約成功】\n姓名：${userProfile ? userProfile.displayName : '訪客'}\n門店：${bookingData.store}\n項目：${bookingData.service}\n時間：${bookingData.date} ${bookingData.time}`;
+
+        // 如果在 LINE 裡面，直接發送訊息
+        if (liff.isInClient()) {
+            liff.sendMessages([{ type: 'text', text: msg }])
+                .then(() => {
+                    alert("預約成功！訊息已發送");
+                    liff.closeWindow(); // 關閉視窗
+                })
+                .catch(err => {
+                    alert("訊息發送失敗，請手動截圖");
+                });
+        } else {
+            // 在一般瀏覽器測試
+            alert(msg);
+        }
+    }
+</script>
+
+</body>
+</html>
