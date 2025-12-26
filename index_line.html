@@ -1,207 +1,615 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的預約系統</title>
-    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-    <style>
-        /* 簡單的 CSS Reset 與樣式，模仿 App 質感 */
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; background: white; min-height: 100vh; display: flex; flex-direction: column; }
-        
-        /* 頭部與進度條 */
-        header { padding: 20px; text-align: center; border-bottom: 1px solid #eee; }
-        .profile-box { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 15px; font-size: 0.9rem; color: #666; }
-        .avatar { width: 30px; height: 30px; border-radius: 50%; background: #ddd; }
-        
-        /* 內容區塊 */
-        .step-content { flex: 1; padding: 20px; display: none; /* 預設隱藏所有步驟 */ }
-        .step-content.active { display: block; animation: fadeIn 0.3s; }
-        
-        /* 按鈕與列表樣式 */
-        .list-btn { width: 100%; padding: 15px; margin-bottom: 10px; border: 1px solid #ddd; background: white; border-radius: 8px; text-align: left; font-size: 16px; cursor: pointer; transition: 0.2s; display: flex; justify-content: space-between; }
-        .list-btn:active { background-color: #f0f0f0; transform: scale(0.98); }
-        .list-btn span { color: #888; font-size: 14px; }
-        
-        .action-btn { width: 100%; padding: 15px; background-color: #06c755; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 20px; }
-        .action-btn.secondary { background-color: #eee; color: #333; margin-top: 10px; }
-        
-        /* 時間選擇格 */
-        .time-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 15px; }
-        .time-btn { padding: 10px; border: 1px solid #ddd; background: white; border-radius: 5px; cursor: pointer; }
-        .time-btn.selected { background-color: #06c755; color: white; border-color: #06c755; }
+import React, { useState, useEffect } from 'react';
+import { Calendar, User, ClipboardList, Home, CheckCircle, Plus, ChevronRight, ChevronLeft, ArrowLeft, Users, Settings, LogOut, XCircle, FileText } from 'lucide-react';
 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .summary-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px dashed #eee; }
-    </style>
-</head>
-<body>
+// --- Mock Data & Constants ---
 
-<div class="container">
-    <header>
-        <div id="profile" class="profile-box">Loading...</div>
-        <h3 id="step-title">1. 選擇分店</h3>
-    </header>
+const INITIAL_STUDENTS = [
+  { id: 1, name: '我自己', dob: '1990-01-01', height: '175', size: 'L', phone: '0912345678' }
+];
 
-    <div id="step1" class="step-content active">
-        <button class="list-btn" onclick="nextStep(1, '台北旗艦店')">台北旗艦店 <span>2.5km</span></button>
-        <button class="list-btn" onclick="nextStep(1, '台中逢甲店')">台中逢甲店 <span>120km</span></button>
-        <button class="list-btn" onclick="nextStep(1, '高雄巨蛋店')">高雄巨蛋店 <span>300km</span></button>
-    </div>
+const INITIAL_CLASSES = [
+  { id: 101, title: 'U8 基礎訓練', date: '2025-12-27', time: '10:00 - 11:30', price: 300, level: 'U8', location: 'A場地' },
+  { id: 102, title: 'U10 進階實戰', date: '2025-12-27', time: '14:00 - 16:00', price: 400, level: 'U10', location: 'B場地' },
+  { id: 103, title: 'U12 菁英培訓', date: '2025-12-28', time: '09:00 - 12:00', price: 500, level: 'U12', location: 'A場地' },
+  { id: 104, title: 'U8 趣味競賽', date: '2025-12-28', time: '13:00 - 15:00', price: 300, level: 'U8', location: 'C場地' },
+  { id: 105, title: 'U10 戰術分析', date: '2026-01-05', time: '19:00 - 20:30', price: 350, level: 'U10', location: '會議室' },
+];
 
-    <div id="step2" class="step-content">
-        <button class="list-btn" onclick="nextStep(2, '剪髮設計')">剪髮設計 <span>$800</span></button>
-        <button class="list-btn" onclick="nextStep(2, '染髮護理')">染髮護理 <span>$2500</span></button>
-        <button class="list-btn" onclick="nextStep(2, '頭皮SPA')">頭皮SPA <span>$1200</span></button>
-        <button class="action-btn secondary" onclick="prevStep(2)">回上一步</button>
-    </div>
+const INITIAL_BOOKINGS = [
+  { id: 1001, classId: 101, studentId: 1, status: 'booked', timestamp: '2025-12-20T10:00:00Z' },
+  { id: 1003, classId: 103, studentId: 1, status: 'booked', timestamp: '2025-12-22T09:30:00Z' }
+];
 
-    <div id="step3" class="step-content">
-        <p>選擇日期：<input type="date" id="date-picker" style="padding:5px; font-size:16px;"></p>
-        <div class="time-grid" id="time-container">
-            </div>
-        <button class="action-btn secondary" onclick="prevStep(3)">回上一步</button>
-    </div>
+const PACKAGES = [
+  { id: 'p1', title: 'U8 季票方案', price: 6000, sessions: 12, desc: '包含本季所有 U8 課程，自動排課' },
+  { id: 'p2', title: 'U10 季票方案', price: 7200, sessions: 12, desc: '包含本季所有 U10 課程，自動排課' },
+];
 
-    <div id="step4" class="step-content">
-        <div class="summary-item"><span>分店</span><strong id="sum-store">--</strong></div>
-        <div class="summary-item"><span>服務</span><strong id="sum-service">--</strong></div>
-        <div class="summary-item"><span>日期</span><strong id="sum-date">--</strong></div>
-        <div class="summary-item"><span>時間</span><strong id="sum-time">--</strong></div>
-        
-        <button class="action-btn" onclick="submitBooking()">確認預約</button>
-        <button class="action-btn secondary" onclick="prevStep(4)">修改資訊</button>
-    </div>
-</div>
+// --- Components ---
 
-<script>
-    // ----------- 設定區域 -----------
-    const LIFF_ID = "2007513150-YKCwzhVx"; 
-    // ------------------------------
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden ${className}`}>
+    {children}
+  </div>
+);
 
-    const bookingData = { store: '', service: '', date: '', time: '' };
-    let userProfile = null;
+const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false }) => {
+  const baseStyle = "px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 active:scale-95";
+  const variants = {
+    primary: "bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200",
+    secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200",
+    outline: "border border-blue-600 text-blue-600 hover:bg-blue-50",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100",
+    success: "bg-green-500 text-white hover:bg-green-600 shadow-md shadow-green-200",
+    ghost: "bg-transparent text-gray-500 hover:bg-gray-100"
+  };
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={disabled}
+      className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed active:scale-100' : ''} ${className}`}
+    >
+      {children}
+    </button>
+  );
+};
 
-    // 1. 初始化 LIFF
-    window.onload = function() {
-        // 為了方便測試，如果沒有 LIFF ID，先跑網頁邏輯
-        if(LIFF_ID === "你的_LIFF_ID_填在這裡") {
-            alert("請記得在程式碼中填入你的 LIFF ID！目前僅為網頁預覽模式。");
-            document.getElementById('profile').innerText = "預覽模式 (未串接)";
-            initTimeSlots(); // 產生時間按鈕
-            return;
-        }
+const Badge = ({ children, color = 'blue' }) => {
+  const colors = {
+    blue: 'bg-blue-100 text-blue-700',
+    green: 'bg-green-100 text-green-700',
+    gray: 'bg-gray-100 text-gray-700',
+    orange: 'bg-orange-100 text-orange-700'
+  };
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[color] || colors.blue}`}>
+      {children}
+    </span>
+  );
+};
 
-        liff.init({ liffId: LIFF_ID })
-            .then(() => {
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                } else {
-                    liff.getProfile().then(profile => {
-                        userProfile = profile;
-                        document.getElementById('profile').innerHTML = 
-                            `<img src="${profile.pictureUrl}" class="avatar"> ${profile.displayName}`;
-                    });
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                document.getElementById('profile').innerText = "LIFF 初始化失敗";
-            });
-            
-        initTimeSlots(); // 產生時間按鈕
+// --- Main App Component ---
+
+export default function App() {
+  const [currentView, setCurrentView] = useState('parent'); // 'parent' or 'coach'
+  const [activeTab, setActiveTab] = useState('single'); // single, package, schedule, profile
+  
+  // Data State
+  const [students, setStudents] = useState(INITIAL_STUDENTS);
+  const [bookings, setBookings] = useState(INITIAL_BOOKINGS); 
+  const [showModal, setShowModal] = useState(false);
+  const [selectedClass, setSelectedClass] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  // Calendar State
+  const [calendarDate, setCalendarDate] = useState(new Date(2025, 11, 1)); 
+  const [selectedDate, setSelectedDate] = useState(null); // 'YYYY-MM-DD'
+
+  // Coach View State
+  const [coachSelectedClassId, setCoachSelectedClassId] = useState(null);
+
+  // Helper to show toast
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // --- Parent Actions ---
+
+  const handleBookClick = (cls) => {
+    setSelectedClass(cls);
+    if (students.length > 0) {
+      setShowModal(true);
+    } else {
+       showToast('系統錯誤：無使用者資料', 'error');
+    }
+  };
+
+  const confirmBooking = () => {
+    const studentId = students[0].id;
+    
+    const alreadyBooked = bookings.some(b => b.classId === selectedClass.id && b.studentId === studentId);
+    if (alreadyBooked) {
+      showToast('您已報名此課程', 'error');
+      setShowModal(false);
+      return;
+    }
+
+    const newBooking = {
+      id: Date.now(),
+      classId: selectedClass.id,
+      studentId: studentId,
+      status: 'booked', 
+      timestamp: new Date().toISOString()
     };
 
-    // 2. 頁面切換邏輯 (SPA核心)
-    function showSection(id) {
-        document.querySelectorAll('.step-content').forEach(el => el.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
+    setBookings([...bookings, newBooking]);
+    setShowModal(false);
+    showToast('報名成功！請至「我的課表」查看');
+  };
+
+  // --- Coach Actions ---
+
+  const handleToggleCheckIn = (bookingId) => {
+    let message = '';
+    setBookings(bookings.map(b => {
+      if (b.id === bookingId) {
+        const isCheckingIn = b.status === 'booked';
+        message = isCheckingIn ? '報到成功' : '已取消報到';
+        return { ...b, status: isCheckingIn ? 'checked-in' : 'booked' };
+      }
+      return b;
+    }));
+    showToast(message, 'success');
+  };
+
+  // --- Render Helpers ---
+
+  const getClassName = (id) => INITIAL_CLASSES.find(c => c.id === id)?.title || '未知課程';
+  const getClassDate = (id) => INITIAL_CLASSES.find(c => c.id === id)?.date || '';
+
+  // Calendar Helpers
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayOfWeek = new Date(year, month, 1).getDay(); 
+    
+    const days = [];
+    for (let i = 0; i < firstDayOfWeek; i++) {
+      days.push(null);
+    }
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(new Date(year, month, i));
+    }
+    return days;
+  };
+
+  const formatDate = (date) => {
+    if (!date) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const hasClassOnDate = (dateStr) => {
+    return bookings.some(b => getClassDate(b.classId) === dateStr);
+  };
+
+  // --- Views ---
+
+  const renderParentSingleClass = () => (
+    <div className="space-y-4 pb-24">
+      <div className="bg-blue-600 p-6 text-white rounded-b-3xl mb-4 shadow-lg">
+        <h2 className="text-2xl font-bold">單堂報名</h2>
+        <p className="opacity-90 mt-1">選擇適合您的課程</p>
+      </div>
+      
+      <div className="px-4 space-y-4">
+        {INITIAL_CLASSES.map(cls => (
+          <Card key={cls.id} className="flex flex-col">
+            <div className="p-4">
+              <div className="flex justify-between items-start mb-2">
+                <Badge color="blue">{cls.level}</Badge>
+                <span className="font-bold text-blue-600">${cls.price}</span>
+              </div>
+              <h3 className="text-lg font-bold text-gray-800 mb-1">{cls.title}</h3>
+              <div className="flex items-center text-gray-500 text-sm mb-1">
+                <Calendar size={14} className="mr-1" /> {cls.date}
+              </div>
+              <div className="flex items-center text-gray-500 text-sm mb-3">
+                <ClipboardList size={14} className="mr-1" /> {cls.time} • {cls.location}
+              </div>
+              <Button onClick={() => handleBookClick(cls)} className="w-full">
+                立即報名
+              </Button>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderParentPackages = () => (
+    <div className="space-y-4 pb-24">
+      <div className="bg-purple-600 p-6 text-white rounded-b-3xl mb-4 shadow-lg">
+        <h2 className="text-2xl font-bold">超值季票</h2>
+        <p className="opacity-90 mt-1">一次購買，整季暢玩</p>
+      </div>
+      
+      <div className="px-4 space-y-4">
+        {PACKAGES.map(pkg => (
+          <Card key={pkg.id} className="relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-1 rounded-bl-lg">
+              HOT
+            </div>
+            <div className="p-5">
+              <h3 className="text-xl font-bold text-gray-800 mb-2">{pkg.title}</h3>
+              <p className="text-gray-600 text-sm mb-4">{pkg.desc}</p>
+              <div className="flex items-baseline mb-4">
+                <span className="text-3xl font-bold text-purple-600">${pkg.price}</span>
+                <span className="text-gray-400 ml-2">/ {pkg.sessions} 堂</span>
+              </div>
+              <Button variant="primary" className="w-full bg-purple-600 hover:bg-purple-700 shadow-purple-200">
+                購買方案
+              </Button>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderParentSchedule = () => {
+    let myBookings = bookings.sort((a, b) => {
+      const dateA = new Date(getClassDate(a.classId) + ' ' + INITIAL_CLASSES.find(c => c.id === a.classId)?.time.split(' - ')[0]);
+      const dateB = new Date(getClassDate(b.classId) + ' ' + INITIAL_CLASSES.find(c => c.id === b.classId)?.time.split(' - ')[0]);
+      return dateA - dateB;
+    });
+
+    if (selectedDate) {
+      myBookings = myBookings.filter(b => getClassDate(b.classId) === selectedDate);
     }
 
-    function nextStep(currentStep, value) {
-        if (currentStep === 1) {
-            bookingData.store = value;
-            document.getElementById('step-title').innerText = "2. 選擇服務";
-            showSection('step2');
-        } else if (currentStep === 2) {
-            bookingData.service = value;
-            document.getElementById('step-title').innerText = "3. 選擇時間";
-            showSection('step3');
-        } else if (currentStep === 3) {
-            // 時間選擇在 selectTime 觸發
-        }
-    }
+    const calendarDays = getDaysInMonth(calendarDate);
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
 
-    function prevStep(currentStep) {
-        if (currentStep === 2) {
-            document.getElementById('step-title').innerText = "1. 選擇分店";
-            showSection('step1');
-        } else if (currentStep === 3) {
-            document.getElementById('step-title').innerText = "2. 選擇服務";
-            showSection('step2');
-        } else if (currentStep === 4) {
-            document.getElementById('step-title').innerText = "3. 選擇時間";
-            showSection('step3');
-        }
-    }
+    return (
+      <div className="space-y-4 pb-24">
+        <div className="bg-green-600 p-6 text-white rounded-b-3xl shadow-lg">
+          <h2 className="text-2xl font-bold">我的課表</h2>
+          <p className="opacity-90 mt-1">查看行事曆與課程安排</p>
+        </div>
 
-    // 3. 時間選擇邏輯
-    function initTimeSlots() {
-        const times = ['10:00', '11:00', '13:00', '14:00', '15:30', '18:00'];
-        const container = document.getElementById('time-container');
-        let html = '';
-        times.forEach(t => {
-            html += `<div class="time-btn" onclick="selectTime('${t}', this)">${t}</div>`;
-        });
-        container.innerHTML = html;
-        
-        // 預設今天日期
-        document.getElementById('date-picker').valueAsDate = new Date();
-    }
+        {/* Calendar Widget */}
+        <div className="mx-4 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={() => setCalendarDate(new Date(calendarDate.setMonth(calendarDate.getMonth() - 1)))} className="p-1 hover:bg-gray-100 rounded-full">
+              <ChevronLeft size={20} className="text-gray-600" />
+            </button>
+            <h3 className="font-bold text-gray-800">
+              {calendarDate.getFullYear()}年 {calendarDate.getMonth() + 1}月
+            </h3>
+            <button onClick={() => setCalendarDate(new Date(calendarDate.setMonth(calendarDate.getMonth() + 1)))} className="p-1 hover:bg-gray-100 rounded-full">
+              <ChevronRight size={20} className="text-gray-600" />
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-7 gap-1 text-center mb-2">
+            {weekDays.map(d => <div key={d} className="text-xs text-gray-400 font-medium">{d}</div>)}
+          </div>
+          
+          <div className="grid grid-cols-7 gap-1">
+            {calendarDays.map((day, idx) => {
+              if (!day) return <div key={idx} />;
+              const dateStr = formatDate(day);
+              const isSelected = selectedDate === dateStr;
+              const hasClass = hasClassOnDate(dateStr);
+              const isToday = formatDate(new Date()) === dateStr;
 
-    function selectTime(time, btnElement) {
-        // UI 變色
-        document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
-        btnElement.classList.add('selected');
-        
-        // 紀錄資料
-        bookingData.time = time;
-        bookingData.date = document.getElementById('date-picker').value;
-        
-        // 更新確認頁面資料
-        document.getElementById('sum-store').innerText = bookingData.store;
-        document.getElementById('sum-service').innerText = bookingData.service;
-        document.getElementById('sum-date').innerText = bookingData.date;
-        document.getElementById('sum-time').innerText = bookingData.time;
-        
-        // 跳轉到確認頁
-        setTimeout(() => {
-            document.getElementById('step-title').innerText = "4. 確認資料";
-            showSection('step4');
-        }, 300);
-    }
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                  className={`
+                    h-9 w-9 mx-auto flex items-center justify-center rounded-full text-sm relative transition-all
+                    ${isSelected ? 'bg-green-600 text-white shadow-md' : 'hover:bg-gray-100 text-gray-700'}
+                    ${isToday && !isSelected ? 'border border-green-600 text-green-600 font-bold' : ''}
+                  `}
+                >
+                  {day.getDate()}
+                  {hasClass && (
+                    <span className={`absolute bottom-1 w-1 h-1 rounded-full ${isSelected ? 'bg-white' : 'bg-green-500'}`} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-    // 4. 提交預約
-    function submitBooking() {
-        const msg = `【預約成功】\n姓名：${userProfile ? userProfile.displayName : '訪客'}\n門店：${bookingData.store}\n項目：${bookingData.service}\n時間：${bookingData.date} ${bookingData.time}`;
+        <div className="px-4 flex justify-between items-center">
+          <h3 className="font-bold text-gray-700 border-l-4 border-green-500 pl-3">
+            {selectedDate ? `${selectedDate} 的課程` : '近期課程'}
+          </h3>
+          {selectedDate && (
+            <button onClick={() => setSelectedDate(null)} className="text-xs text-blue-600 hover:underline">
+              顯示全部
+            </button>
+          )}
+        </div>
 
-        // 如果在 LINE 裡面，直接發送訊息
-        if (liff.isInClient()) {
-            liff.sendMessages([{ type: 'text', text: msg }])
-                .then(() => {
-                    alert("預約成功！訊息已發送");
-                    liff.closeWindow(); // 關閉視窗
+        <div className="px-4 space-y-3">
+          {myBookings.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
+              <p>{selectedDate ? '這天沒有課程' : '無預約課程'}</p>
+            </div>
+          ) : (
+            myBookings.map(booking => {
+              const cls = INITIAL_CLASSES.find(c => c.id === booking.classId);
+              if (!cls) return null;
+              return (
+                <Card key={booking.id} className="border-l-4 border-l-green-500">
+                  <div className="p-4 flex justify-between items-center">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge color={booking.status === 'checked-in' ? 'green' : 'gray'}>
+                          {booking.status === 'checked-in' ? '已報到' : '已預約'}
+                        </Badge>
+                      </div>
+                      <h3 className="font-bold text-gray-800">{cls.title}</h3>
+                      <p className="text-sm text-gray-500">{cls.date} {cls.time}</p>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderMyZone = () => {
+    // Show all bookings as a list history
+    const myBookings = [...bookings].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const me = students[0];
+
+    return (
+      <div className="space-y-4 pb-24">
+        <div className="bg-gray-800 p-6 text-white rounded-b-3xl shadow-lg">
+          <div className="flex items-center gap-4">
+             <div className="w-16 h-16 bg-gray-600 rounded-full flex items-center justify-center text-2xl font-bold border-2 border-white">
+                {me.name[0]}
+             </div>
+             <div>
+                <h2 className="text-2xl font-bold">{me.name}</h2>
+                <p className="opacity-70 text-sm">{me.phone}</p>
+             </div>
+          </div>
+        </div>
+
+        <div className="px-4 mt-2">
+            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                <FileText size={20} className="text-gray-600"/> 已報名課程紀錄
+            </h3>
+            
+            <div className="space-y-3">
+            {myBookings.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 bg-white rounded-xl border border-gray-100">
+                    <p>尚無報名紀錄</p>
+                </div>
+            ) : (
+                myBookings.map(booking => {
+                    const cls = INITIAL_CLASSES.find(c => c.id === booking.classId);
+                    if (!cls) return null;
+                    return (
+                    <Card key={booking.id} className="flex flex-col">
+                        <div className="p-4">
+                            <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-bold text-gray-800">{cls.title}</h4>
+                                <Badge color={booking.status === 'checked-in' ? 'green' : 'gray'}>
+                                    {booking.status === 'checked-in' ? '已完成' : '待上課'}
+                                </Badge>
+                            </div>
+                            <div className="text-sm text-gray-500 space-y-1">
+                                <p>日期：{cls.date}</p>
+                                <p>時間：{cls.time}</p>
+                                <p>地點：{cls.location}</p>
+                                <p>費用：${cls.price}</p>
+                            </div>
+                        </div>
+                    </Card>
+                    );
                 })
-                .catch(err => {
-                    alert("訊息發送失敗，請手動截圖");
-                });
-        } else {
-            // 在一般瀏覽器測試
-            alert(msg);
-        }
-    }
-</script>
+            )}
+            </div>
+        </div>
+      </div>
+    );
+  };
 
-</body>
-</html>
+  const renderCoachDashboard = () => {
+    // ... Coach dashboard logic remains the same ...
+    if (coachSelectedClassId) {
+      const cls = INITIAL_CLASSES.find(c => c.id === coachSelectedClassId);
+      const classBookings = bookings.filter(b => b.classId === coachSelectedClassId);
+
+      return (
+        <div className="pb-20">
+          <div className="bg-gray-800 p-4 text-white flex items-center gap-3 sticky top-0 z-10 shadow-md">
+            <button onClick={() => setCoachSelectedClassId(null)}>
+              <ArrowLeft />
+            </button>
+            <div>
+              <h2 className="font-bold text-lg">{cls?.title}</h2>
+              <p className="text-xs text-gray-400">{cls?.date} {cls?.time}</p>
+            </div>
+          </div>
+
+          <div className="p-4">
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-gray-600 font-medium">已報名: {classBookings.length} 人</span>
+              <span className="text-gray-600 font-medium">實到: {classBookings.filter(b => b.status === 'checked-in').length} 人</span>
+            </div>
+
+            <div className="space-y-3">
+              {classBookings.length === 0 ? (
+                 <div className="text-center py-10 text-gray-400 border-2 border-dashed rounded-xl">
+                   無人報名
+                 </div>
+              ) : (
+                classBookings.map(booking => {
+                  const student = students.find(s => s.id === booking.studentId);
+                  const isCheckedIn = booking.status === 'checked-in';
+                  return (
+                    <Card key={booking.id} className={`${isCheckedIn ? 'bg-green-50 border-green-200' : ''}`}>
+                      <div className="p-4 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${isCheckedIn ? 'bg-green-500' : 'bg-gray-400'}`}>
+                            {student?.name[0]}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-gray-800">{student?.name}</h4>
+                            <p className="text-xs text-gray-500">{student?.phone}</p>
+                          </div>
+                        </div>
+                        
+                        <Button 
+                            variant={isCheckedIn ? 'success' : 'primary'} 
+                            className={`py-1 px-3 text-sm ${isCheckedIn ? 'bg-green-100 text-green-700 hover:bg-green-200 shadow-none border border-green-300' : 'bg-gray-800 hover:bg-gray-900'}`}
+                            onClick={() => handleToggleCheckIn(booking.id)}
+                          >
+                            {isCheckedIn ? (
+                              <>
+                                <CheckCircle size={16} className="mr-1" /> 已報到
+                              </>
+                            ) : '報到'}
+                          </Button>
+                      </div>
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="pb-20">
+        <div className="bg-gray-800 p-6 text-white rounded-b-3xl mb-4 shadow-lg">
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            <Settings className="animate-spin-slow" /> 教練後台
+          </h2>
+          <p className="opacity-70 mt-1">今日課程與點名管理</p>
+        </div>
+
+        <div className="px-4 space-y-4">
+          <h3 className="font-bold text-gray-700 border-l-4 border-gray-800 pl-3">近期課程</h3>
+          {INITIAL_CLASSES.map(cls => {
+             const count = bookings.filter(b => b.classId === cls.id).length;
+             return (
+              <Card key={cls.id}>
+                <div 
+                  className="p-4 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => setCoachSelectedClassId(cls.id)}
+                >
+                  <div>
+                    <div className="flex gap-2 mb-1">
+                      <Badge color="gray">{cls.level}</Badge>
+                      <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{count} 人報名</span>
+                    </div>
+                    <h3 className="font-bold text-gray-800 text-lg">{cls.title}</h3>
+                    <p className="text-sm text-gray-500 mt-1">{cls.date} • {cls.time}</p>
+                  </div>
+                  <ChevronRight className="text-gray-400" />
+                </div>
+              </Card>
+             );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // --- Main Layout ---
+
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans flex justify-center">
+      {/* Mobile Container Sim */}
+      <div className="w-full max-w-md bg-white shadow-2xl min-h-screen relative flex flex-col">
+        
+        {/* Toggle Role Button (Demo Purpose) */}
+        <div className="absolute top-4 right-4 z-50">
+          <button 
+            onClick={() => {
+              setCurrentView(currentView === 'parent' ? 'coach' : 'parent');
+              setCoachSelectedClassId(null);
+            }}
+            className="bg-black/80 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-md shadow-lg flex items-center gap-1 hover:bg-black transition"
+          >
+            {currentView === 'parent' ? <Users size={12}/> : <LogOut size={12} />}
+            {currentView === 'parent' ? '切換至教練' : '切換至家長'}
+          </button>
+        </div>
+
+        {/* View Content */}
+        <div className="flex-1 overflow-y-auto scrollbar-hide">
+          {currentView === 'parent' && (
+            <>
+              {activeTab === 'single' && renderParentSingleClass()}
+              {activeTab === 'package' && renderParentPackages()}
+              {activeTab === 'schedule' && renderParentSchedule()}
+              {activeTab === 'profile' && renderMyZone()}
+            </>
+          )}
+          {currentView === 'coach' && renderCoachDashboard()}
+        </div>
+
+        {/* Bottom Navigation (Only for Parent) */}
+        {currentView === 'parent' && (
+          <div className="bg-white border-t border-gray-100 px-2 py-2 flex justify-between items-center fixed bottom-0 w-full max-w-md pb-safe">
+            <button onClick={() => setActiveTab('single')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'single' ? 'text-blue-600' : 'text-gray-400'}`}>
+              <Home size={24} strokeWidth={activeTab === 'single' ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">單堂報名</span>
+            </button>
+            <button onClick={() => setActiveTab('package')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'package' ? 'text-purple-600' : 'text-gray-400'}`}>
+              <ClipboardList size={24} strokeWidth={activeTab === 'package' ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">包堂報名</span>
+            </button>
+            <button onClick={() => setActiveTab('schedule')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'schedule' ? 'text-green-600' : 'text-gray-400'}`}>
+              <Calendar size={24} strokeWidth={activeTab === 'schedule' ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">我的課表</span>
+            </button>
+            <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 p-2 flex-1 ${activeTab === 'profile' ? 'text-gray-800' : 'text-gray-400'}`}>
+              <User size={24} strokeWidth={activeTab === 'profile' ? 2.5 : 2} />
+              <span className="text-[10px] font-medium">個人專區</span>
+            </button>
+          </div>
+        )}
+
+        {/* Modals & Toasts */}
+        
+        {/* Booking Modal */}
+        {showModal && selectedClass && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
+            <div className="bg-white w-full max-w-sm rounded-2xl p-6 animate-in slide-in-from-bottom-10 fade-in duration-300">
+              <h3 className="text-xl font-bold mb-4 text-gray-800">確認報名</h3>
+              
+              <div className="bg-blue-50 p-4 rounded-xl mb-6">
+                <h4 className="font-bold text-blue-800 mb-1">{selectedClass.title}</h4>
+                <p className="text-blue-600 text-sm">{selectedClass.date} • {selectedClass.time}</p>
+                <div className="mt-2 pt-2 border-t border-blue-100 flex justify-between items-center">
+                  <span className="text-sm text-blue-500">費用</span>
+                  <span className="font-bold text-lg text-blue-700">${selectedClass.price}</span>
+                </div>
+              </div>
+
+              <div className="mb-6 text-sm text-gray-500 text-center">
+                即將為您自己報名此課程
+              </div>
+
+              <div className="flex gap-3">
+                <Button variant="secondary" className="flex-1" onClick={() => setShowModal(false)}>取消</Button>
+                <Button variant="primary" className="flex-1" onClick={confirmBooking} disabled={students.length === 0}>
+                  確認付款
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Toast Notification */}
+        {toast && (
+          <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[60] px-6 py-3 rounded-full shadow-xl text-white text-sm font-medium animate-in fade-in slide-in-from-top-5 duration-300 flex items-center gap-2 ${toast.type === 'error' ? 'bg-red-500' : 'bg-gray-800'}`}>
+            {toast.type === 'success' && <CheckCircle size={16} />}
+            {toast.message}
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
